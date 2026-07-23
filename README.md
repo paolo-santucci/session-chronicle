@@ -31,7 +31,11 @@ cd .opencode/session-chronicle && bun install && cd -
 mkdir -p .opencode/plugins
 echo 'export { SessionChronicle } from "../session-chronicle/index.ts"' \
   > .opencode/plugins/session-chronicle.ts
+mkdir -p .opencode/skills
+cp -r .opencode/session-chronicle/skill/session-chronicle .opencode/skills/session-chronicle
 ```
+
+The last step installs the bundled **crystallisation skill** (see below). Skip it if the project already carries the skill in `.claude/skills/session-chronicle/` — skill names must be unique across all discovery locations.
 
 The `bun install` matters: the loader resolves `@opencode-ai/plugin` automatically only for files inside `plugins/`; the cloned module needs its own `node_modules`, or its whole import graph fails silently (ESM semantics — the shim never executes either).
 
@@ -104,11 +108,13 @@ Restrict them like any tool if needed:
 | `MEMORY_DRAFT_NUDGE_MIN` | `3` | buffered signals required before the idle nudge fires |
 | `MEMORY_HEALTH_STALE_MAX` / `MEMORY_HEALTH_DANGLING_MAX` | `5` / `10` | thresholds for the index health line |
 
-## Pairing with the crystallisation skill
+## The bundled crystallisation skill
 
-The plugin handles capture, guard, retrieval, and nudging. The *crystallisation prose* — how to UPSERT the day's entry, wikilink subjects, materialise recurring topics — lives in the companion `session-chronicle` skill (an Agent Skills `SKILL.md`). OpenCode discovers skills natively from `.claude/skills/` or `.opencode/skills/`; deploy the skill alongside the plugin so the model knows the workflow when the nudge asks it to crystallise.
+The plugin alone covers the full **read path** (capture, retrieval injection, guards, `memory_*` tools). The **write path** — *how* to crystallise the draft into a well-formed entry (UPSERT on the day's `open` entry, frontmatter schema, midnight-rollover rule, `[[slug]]` wikilinks, lazy topic materialisation, draft truncation) — is workflow prose the model must be able to load. It ships as a complete [Agent Skills](https://opencode.ai/docs/skills/) package under `skill/session-chronicle/` (SKILL.md + note templates + maintenance scripts).
 
-Maintenance scripts the skill invokes (`slugify.py`, `sync-topics-field.py`, `memory-audit.py --materialization-candidates`) ship in `scripts/` and remain directly runnable.
+Install it into any skill discovery location (`.opencode/skills/`, `.claude/skills/`, global equivalents) — the install recipe above does it with a `cp -r`. **Install it once**: if the project already has `session-chronicle` under `.claude/skills/` (e.g. deployed from a Claude Code library), OpenCode discovers that copy natively and the bundled one must not be added.
+
+Without the skill the plugin still works, but the idle nudge asks for a crystallisation the model has no workflow for — it will improvise and iterate against the `note-lint` schema validator instead of following the canonical steps.
 
 ## Design notes
 
