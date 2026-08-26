@@ -3,14 +3,13 @@ name: session-chronicle
 description: >-
   MUST BE USED at every checkpoint to maintain the project's CHRONOLOGICAL session
   memory — an append-only journal under <docs-root>/sessions/. PROACTIVELY invoked
-  after a logical group of work, after commits, and at end-of-session, and is called
-  by the update-status skill as a hand-off right after STATUS.yaml is written. Also
+  after a logical group of work, after commits, and at end-of-session. Also
   fires on explicit signals ("checkpoint", "save progress", "end of session", "that's
   it", "talk to you tomorrow"). Writes one entry per session (UPSERT), wikilinking the
-  topics discussed so a subject can be reconstructed across time. NOT for STATUS.yaml
-  (that is update-status) and NOT for source code.
+  topics discussed so a subject can be reconstructed across time. NOT for a project
+  status file and NOT for source code.
 disable-model-invocation: false
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash(bash .claude/skills/session-chronicle/scripts/*.sh), Bash(python3 .claude/skills/session-chronicle/scripts/*.py *)
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash(bash .opencode/skills/session-chronicle/scripts/*.sh), Bash(python3 .opencode/skills/session-chronicle/scripts/*.py *)
 version: 1.5.0
 ---
 
@@ -18,9 +17,9 @@ version: 1.5.0
 
 Maintains the **chronological session memory** of the target project: an append-only journal of dated entries under `${docs-root}/sessions/`, one entry per working session, that records *what was done, what was decided and why, and what stayed open* — and wikilinks the topics touched so the discussion on any subject can later be reconstructed.
 
-This memory exists **for Claude Code to re-read**, not primarily for the human. The companion read-path (the `UserPromptSubmit` hook, see *Hooks* below) injects relevant entries back into context automatically — that is what makes this memory worth writing.
+This memory exists **for the agent to re-read**, not primarily for the human. The companion read-path (`retrieve-inject.py`, driven by the plugin on `chat.message`, see *Plugin wiring* below) injects relevant entries back into context automatically — that is what makes this memory worth writing.
 
-`${docs-root}` defaults to `.claude/docs` unless the target `CLAUDE.md` declares a `docs-root:` override in its frontmatter. Session entries live in `${docs-root}/sessions/`.
+`${docs-root}` defaults to `docs` unless the target `AGENTS.md` declares a `docs-root:` override in its frontmatter. Session entries live in `${docs-root}/sessions/`.
 
 ## Scope
 
@@ -30,27 +29,27 @@ This memory exists **for Claude Code to re-read**, not primarily for the human. 
 - The wikilinks (`[[topic-slug]]`) embedded in those entries.
 
 **Does not own:**
-- `STATUS.yaml` — that is `update-status`. This skill never touches it.
-- `.claude/agent-memory/` — agent behavioural memory; different subject, different owner.
+- Any project status file (`STATUS.yaml` or equivalent) — a different store with a different owner, present in some projects and not others. This skill never reads or writes it.
+- `.opencode/agent-memory/` — agent behavioural memory; different subject, different owner.
 - Source code, tests, config.
 
 ## Operating principles
 
-1. **Append-only chronology.** A `status: closed` entry is immutable history — never edit it. The current session has exactly one `status: open` entry; everything is appended there until the session closes. (Enforced by the `note-lint.py` PreToolUse hook.)
+1. **Append-only chronology.** A `status: closed` entry is immutable history — never edit it. The current session has exactly one `status: open` entry; everything is appended there until the session closes. (Enforced by `note-lint.py` on `tool.execute.before`.)
 2. **One entry per session (UPSERT).** Multiple checkpoints in the same session coalesce into the same `open` entry — never fragment one session across many files.
-3. **Spillover, not re-derivation.** Reuse the summaries `update-status` just wrote to `recently-completed` and the commit list; do not re-summarise the work from scratch.
+3. **Spillover, not re-derivation.** Build the entry from evidence that already exists — the draft buffer, the git log, and any summary the project's own checkpoint workflow just produced. Do not re-summarise the work from scratch.
 4. **Link generously, materialise lazily.** Name every meaningful subject as `[[topic-slug]]` in the body even when no topic note exists yet — an unresolved link is a forward marker. A topic note is created only once the subject recurs across **≥2 sessions** (Step 5); never one note per mention.
 5. **Provenance always.** Every entry records its `commits:` and any `plans:`/specs it touched. No invented work.
 6. **Terse and atomic.** Optimise for cheap re-injection: short prose, no filler. The body is what gets re-read into context; every sentence pays rent.
 
 ## Language
 
-Free-form prose (the three body sections) is written **in the language of the session** (so, for an Italian-conducted session, Italian) — this memory is for the consumer and the user, not a machine-only state file. **Slugs, tags, and the `type` enum are always English/kebab-case** for stable matching and linking. (This deliberately differs from `update-status`, which forces English in `STATUS.yaml`.)
+All note content is written **in English, always** — regardless of the language the session is conducted in. This keeps the journal uniform, diffable, and stably matchable across sessions and contributors. Free-form prose, slugs, tags, and the `type` enum are all English (slugs/tags additionally kebab-case).
 
 ## Workflow
 
 ### Step 1 — Resolve paths
-Resolve `${docs-root}` from the target `CLAUDE.md` frontmatter (default `.claude/docs`). Ensure `${docs-root}/sessions/` exists (create if missing).
+Resolve `${docs-root}` from the target `AGENTS.md` frontmatter (default `docs`). Ensure `${docs-root}/sessions/` exists (create if missing).
 
 ### Step 2 — Find or create the current session entry
 The current session is identified by `status: open`, **not** by a `<today>` filename match — a session that crosses midnight keeps its original entry (whose filename carries the *start* date). But an `open` entry is the *current* session only if it is **recent**: closes are best-effort (Step 6 fires only on an explicit end-of-session signal), so a forgotten-to-close entry from days ago must NOT be adopted by an unrelated later session.
@@ -62,11 +61,11 @@ Glob **all** `${docs-root}/sessions/*.md`; read each one's `status:` and `date:`
 - **No adoptable `open` entry** → start a new session: create `${docs-root}/sessions/<today>--<theme-slug>.md` from `references/session-note-template.md`, where `<today>` = `YYYY-MM-DD` and `<theme-slug>` is a short English kebab slug for the session's main theme. Set `status: open` and stamp `started:` (see Step 4).
 
 ### Step 3 — Update the body
-**Consume the draft buffer first (v1.4.0).** If `${docs-root}/.drafts/<today>.draft.jsonl` exists and is non-empty, Read it: it is the raw tool-activity evidence passively captured by the `capture-signals.py` hook (file writes, significant bash commands, prompts). Use it to crystallise — nothing real missed, nothing invented; the buffer is *evidence*, never pasted verbatim into the entry. After the session entry is written, **truncate the draft** (Write it back empty): its signals are now crystallised, and a stale buffer would keep re-triggering the Stop nudge after the session closes.
+**Consume the draft buffer first (v1.4.0).** If `${docs-root}/.drafts/<today>.draft.jsonl` exists and is non-empty, Read it: it is the raw tool-activity evidence passively captured by `capture-signals.py` (file writes, significant bash commands, prompts). Use it to crystallise — nothing real missed, nothing invented; the buffer is *evidence*, never pasted verbatim into the entry. After the session entry is written, **truncate the draft** (Write it back empty): its signals are now crystallised, and a stale buffer would keep re-triggering the idle nudge after the session closes.
 
-Append/merge into the three sections, reusing the `recently-completed` summaries and commit list from the just-completed `update-status` run:
+Append/merge into the three sections. Sources, in order of preference: the draft buffer above, the session's git log, and — **only if the project maintains one** — whatever summary its checkpoint workflow just wrote. Never block on a status file: most projects have none, and the draft buffer plus git log are sufficient.
 - **`## Cosa è stato fatto`** — what was done this session.
-- **`## Decisioni e perché`** — each decision with its reason. This is the in-line decision log; it is read back by the retrieval hook.
+- **`## Decisioni e perché`** — each decision with its reason. This is the in-line decision log; it is read back by `retrieve-inject.py`.
 - **`## Thread aperti`** — questions/work left open.
 
 In every section, write subjects as `[[topic-slug]]` wikilinks. Keep prose terse.
@@ -103,21 +102,31 @@ session-chronicle: <created|updated> sessions/<file> (status: <open|closed>, top
 
 Nothing else.
 
-## Hooks (registered per-target; not synced by sync-claude.sh)
+## Plugin wiring (`index.ts`)
 
-This skill ships five hook scripts under `scripts/`. They are registered in the target's `.claude/settings.json` — see `references/hooks.settings.json` for the block to merge. `sync-claude.sh` does **not** touch settings, so registration is a one-time per-target step (automated later by the M3 `session-memory-bootstrap` skill).
+There is no settings-file hook registry in OpenCode. The `SessionChronicle` plugin subscribes to OpenCode events and shells out to the scripts under this skill's `scripts/` — the single copy, which the plugin resolves rather than duplicating — adapting each call to the JSON-on-stdin contract they expect.
 
-- **`capture-signals.py`** (v1.4.0) — `PostToolUse` on `Write|Edit|Bash` + `UserPromptSubmit`. The **passive capture path**: mirrors meaningful tool activity (file writes, non-trivial bash, prompts) into `${docs-root}/.drafts/<today>.draft.jsonl`. Zero API calls, zero injected tokens (never writes stdout); noise-filtered, dedup by hash, drafts auto-pruned after 7 days. The draft is *evidence* consumed by Step 3, not memory — add `.drafts/` to the target's `.gitignore`.
-- **`retrieve-inject.py`** — `UserPromptSubmit`. The **read-path**: lexically matches the prompt against sessions/ (and topics/), injects the top-k note *bodies* (frontmatter stripped, budgeted) into context. The budget is in **characters** (`MEMORY_INJECT_BUDGET_CHARS`, default 6000 ≈ ~1500 tokens), a cheap proxy for tokens. v1.4.0+ ranking: **BM25** body relevance (k1=1.5, b=0.75, flat IDF — saturates repeated terms, normalises note length; v1.5.0), internal synonym expansion (acronym ↔ spelt-out, never injected), recency-tiered scan capped at `MEMORY_INJECT_MAX_SCAN` (default 60 files, newest first — bounds latency as memory grows), and a `type:` boost that weights distilled topic notes above raw session logs. Read-only; always exits 0 (never blocks a prompt).
-- **`topic-index.sh`** — `SessionStart`. Injects a compact orientation index (topic slugs + recent session titles). Not the content — orientation only. v1.5.0: appends a one-line **health check** (via `memory-audit.py --stale --dangling`) only when thresholds are exceeded (`MEMORY_HEALTH_STALE_MAX` default 5, `MEMORY_HEALTH_DANGLING_MAX` default 10, ~30 tokens) — this is what makes the audit actually run instead of relying on someone remembering to.
-- **`note-lint.py`** — `PreToolUse` + `PostToolUse` on `Write|Edit`. PreToolUse blocks edits to `closed` session entries (append-only) and (v1.4.0) blocks content carrying secret-like patterns (GitHub/API/AWS/Slack tokens, private keys, non-loopback IPs) — notes are re-injected on every retrieval, so a leaked credential would resurface forever; Claude is asked to re-submit with `[REDACTED-*]` placeholders. PostToolUse validates frontmatter schema + provenance; `exit 2` reports violations back to Claude.
-- **`checkpoint-nudge.py`** — `Stop`. v1.4.0, **active**: if no recent (today/yesterday) `open` entry is being journaled and today's draft buffer holds ≥3 signals (`MEMORY_DRAFT_NUDGE_MIN`), it asks to crystallise that concrete evidence; fallback (capture hook not registered): the original commit-today reminder. Self-limiting (honours `stop_hook_active`, goes quiet once a recent open entry exists).
+Every script resolves `<docs-root>` through `scripts/_docsroot.py` (`AGENTS.md` frontmatter, then `CLAUDE.md`, then `docs`). Never re-implement that lookup: a divergent resolver sends capture, retrieval and the write-path guard to different directories, and each one reads a missing directory as "no notes yet" rather than as an error. `_docsroot.py --check <project>` reports the mismatch.
+
+| Script | OpenCode event | What it does |
+|---|---|---|
+| `capture-signals.py` | `chat.message` (prompt) + `tool.execute.after` | **Passive capture path.** Mirrors meaningful tool activity (file writes, non-trivial bash, prompts) into `${docs-root}/.drafts/<today>.draft.jsonl`. Zero API calls; noise-filtered, dedup by hash, pruned after 7 days. The draft is *evidence* consumed by Step 3, not memory — add `.drafts/` to the target's `.gitignore`. |
+| `retrieve-inject.py` | `chat.message` | **Read path.** Lexically matches the prompt against sessions/ and topics/ and appends the top-k note bodies to the message as a **synthetic text part** — the OpenCode equivalent of prompt-time injection. Budget in characters (`MEMORY_INJECT_BUDGET_CHARS`, default 6000 ≈ ~1500 tokens). Ranking: BM25 (k1=1.5, b=0.75, flat IDF), internal synonym expansion, recency-tiered scan capped at `MEMORY_INJECT_MAX_SCAN` (default 60 files), `type:` boost weighting topic notes above raw session logs. Read-only, always exits 0. |
+| `topic-index.sh` | `chat.message`, first message of a session | Orientation index (topic slugs + recent session titles), injected the same way. Not the content — orientation only. Appends a one-line **health check** (`memory-audit.py --stale --dangling`) only when thresholds are exceeded (`MEMORY_HEALTH_STALE_MAX` default 5, `MEMORY_HEALTH_DANGLING_MAX` default 10, ~30 tokens) — that is what makes the audit actually run. |
+| `note-lint.py` | `tool.execute.before` / `.after` | **Write-path guard.** Before: blocks edits to `closed` entries (append-only) and content carrying secret-like patterns (GitHub/API/AWS/Slack tokens, private keys, non-loopback IPs) — notes are re-read on every retrieval, so a leaked credential would resurface forever; the caller is asked to re-submit with `[REDACTED-*]` placeholders. After: validates frontmatter schema + provenance; `exit 2` reports the violation. |
+| `checkpoint-nudge.py` | `session.idle` | Decides a checkpoint is due: today's draft buffer holds ≥ `MEMORY_DRAFT_NUDGE_MIN` (default 3) signals, or a commit was made today with no recent (today/yesterday) `open` entry. When due, the plugin **invokes `/session-chronicle` directly** via `client.session.command` — a deterministic trigger, not a text request — and injects the reminder on the next message only if dispatch is skipped. Self-limiting via draft truncation on crystallisation; a per-session cooldown guards the loop. |
+
+The checkpoint is **deterministic, not a soft nudge**. On `session.idle` the plugin dispatches `/session-chronicle` through the SDK client (`client.session.command`), so the write no longer depends on the running model noticing an injected instruction. Pin the write to a capable model with `SESSION_CHRONICLE_MODEL` (full id, e.g. `opencode-go/gpt-5.6`) — if unset, the session's own model runs the command. `SESSION_CHRONICLE_CHECKPOINT_COOLDOWN_MS` (default `300000`) bounds redispatch per session.
+
+The plugin also exposes `memory_find`, `memory_recall`, `memory_backlinks` and `memory_audit` as tools for explicit recall, and hands off to `experimental.session.compacting` so memory survives a compaction.
+
+Child sessions are skipped — only the top-level session journals.
 
 ### Maintenance scripts (on demand / periodically — M4)
 
 Deterministic, read-mostly; the LLM only writes prose. Invoked by Step 5 and by audits.
 - `memory-audit.py` — `--orphans` (topic notes with 0 backlinks), `--dups` (near-duplicate slugs/aliases), `--dangling` (links to non-existent topics), `--materialization-candidates [--threshold N]`, `--stale [--days D]`. `--json` for machine use. `--base ${docs-root}`.
-- `memory-recall.sh <slug> [--topic|--sessions|--all]` (v1.5.0) — one-call recall of a **known** subject: prints the topic note body and the backlinking session ids in a single invocation (default `--all`). Use it instead of a `cat`+`grep` chain when you already know the slug; the read-path hook remains the way memory reaches you unprompted.
+- `memory-recall.sh <slug> [--topic|--sessions|--all]` (v1.5.0) — one-call recall of a **known** subject: prints the topic note body and the backlinking session ids in a single invocation (default `--all`). Use it instead of a `cat`+`grep` chain when you already know the slug; the read path remains the way memory reaches you unprompted.
 - `backlinks.py <slug> --base ${docs-root}` — sessions linking a slug (+ aliases); `--count` / `--json`.
 - `slugify.py [--resolve "<title>" --base ${docs-root}]` — canonical slug + dedup resolution.
 - `sync-topics-field.py <entry>` — realign a session's `topics:` to its body wikilinks.
@@ -131,8 +140,8 @@ Deterministic, read-mostly; the LLM only writes prose. Invoked by Step 5 and by 
 - `commits:`/`plans:` provenance present; no invented work.
 
 ## Anti-patterns
-- Do not edit a `closed` session entry — create a new one. (The hook will block you.)
-- Do not write `STATUS.yaml` — that is `update-status`. Hand-off only.
+- Do not edit a `closed` session entry — create a new one. (`note-lint.py` will block you.)
+- Do not write a project status file. This skill owns `${docs-root}/sessions/` and `topics/`, nothing else.
 - Do not materialise a topic on first mention, or create more than one note per concept — UPSERT and dedup via `slugify.py --resolve`.
 - Do not fragment one session across multiple files.
 - Do not re-summarise work already summarised in `recently-completed` — reuse it.

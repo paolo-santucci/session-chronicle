@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-"""Stop hook — active nudge to crystallise a finished unit of work.
+"""Idle hook — decide whether a checkpoint is due and surface it.
 
-Fires (exit 2, message to Claude) only when NO recent (today/yesterday) OPEN
-sessions/ entry is being journaled, and either:
+Fires (exit 2, message on stderr) when either:
   (a) today's draft buffer (<docs-root>/.drafts/<today>.draft.jsonl, written
       passively by capture-signals.py) holds >= MEMORY_DRAFT_NUDGE_MIN signals
       (default 3) — the message asks to crystallise that concrete evidence; or
-  (b) a commit was made today — the original generic reminder (fallback when
-      the capture hook is not registered on this target).
+  (b) a commit was made today with no recent (today/yesterday) OPEN sessions/
+      entry — the original generic reminder (fallback when the capture hook is
+      not registered on this target).
 
-Self-limiting: honours `stop_hook_active` to avoid loops, and goes quiet as soon
-as a recent open entry exists (session-chronicle truncates the draft on
-crystallisation, so a closed session cannot re-trigger via stale signals).
+The draft branch deliberately ignores an existing recent `open` entry: the
+correct self-limiter for the deterministic trigger is draft truncation on
+crystallisation, so a fresh batch of work must still be journaled into the day's
+open entry. The `open` gate applies only to the commit-today fallback, keeping a
+healthy journaled session from being re-nudged on every commit.
 
-stdlib only. Exit 2 = surface message. Exit 0 = nothing to do / error (never
-break the turn on our own bug).
+Honours `stop_hook_active` to avoid loops. stdlib only. Exit 2 = surface
+message. Exit 0 = nothing to do / error (never break the turn on our own bug).
 """
 import sys, os, json, re, glob, subprocess, datetime
+
+from _docsroot import resolve_base
 
 
 def main():
@@ -25,28 +29,12 @@ def main():
     if data.get("stop_hook_active"):
         return  # already in a stop-hook continuation; don't loop
 
-    proj = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
-    cm = ""
-    try:
-        with open(os.path.join(proj, "CLAUDE.md"), encoding="utf-8", errors="replace") as fh:
-            cm = fh.read()
-    except Exception:
-        pass
-    dr = ""
-    m = re.match(r"^---\s*\n(.*?)\n---", cm, re.S)
-    if m:
-        mm = re.search(r"^docs-root:\s*(.*)$", m.group(1), re.M)
-        if mm:
-            dr = mm.group(1).strip().strip("'\"")
-    base = os.path.join(proj, dr or ".claude/docs")
+    proj = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
+    base = resolve_base(proj)
 
-    # Stay quiet only if a *recent* (today or yesterday) session entry is still
-    # `status: open`. The yesterday window covers a session that started before
-    # midnight and remains current after the date rolled over — keying on a
-    # `<today>--*.md` glob would false-nudge there. An open entry older than that is
-    # a forgotten close, NOT the current session, so it must NOT suppress the nudge.
     today = datetime.date.today()
     recent = {today.isoformat(), (today - datetime.timedelta(days=1)).isoformat()}
+    has_recent_open = False
     for f in glob.glob(os.path.join(base, "sessions", "*.md")):
         try:
             with open(f, encoding="utf-8", errors="replace") as fh:
@@ -59,7 +47,8 @@ def main():
         dm = re.search(r"^date:\s*(\S+)", head, re.M)
         d = dm.group(1).strip().strip("'\"") if dm else os.path.basename(f)[:10]
         if d in recent:
-            return  # a recent open session is being journaled — stay quiet
+            has_recent_open = True
+            break
 
     draft = os.path.join(base, ".drafts", today.isoformat() + ".draft.jsonl")
     try:
@@ -69,23 +58,23 @@ def main():
         draft_count = 0
     if draft_count >= int(os.environ.get("MEMORY_DRAFT_NUDGE_MIN", "3")):
         sys.stderr.write(
-            "session-memory: %d tool signal(s) buffered in %s. Run /update-status "
-            "(it hands off to /session-chronicle) to crystallise them into a "
-            "sessions/ entry before finishing.\n"
+            "session-memory: %d tool signal(s) buffered in %s. Run /session-chronicle "
+            "to crystallise them into a sessions/ entry before finishing.\n"
             % (draft_count, os.path.relpath(draft, proj)))
         sys.exit(2)
 
-    try:
-        out = subprocess.run(["git", "-C", proj, "log", "--since=midnight", "--oneline"],
-                             capture_output=True, text=True, timeout=5)
-        if out.returncode == 0 and out.stdout.strip():
-            sys.stderr.write(
-                "session-memory: you committed today but there is no recent (today/yesterday) "
-                "OPEN sessions/ journal entry. Run /update-status (it hands off to "
-                "/session-chronicle) to checkpoint this session before finishing.\n")
-            sys.exit(2)
-    except Exception:
-        pass
+    if not has_recent_open:
+        try:
+            out = subprocess.run(["git", "-C", proj, "log", "--since=midnight", "--oneline"],
+                                 capture_output=True, text=True, timeout=5)
+            if out.returncode == 0 and out.stdout.strip():
+                sys.stderr.write(
+                    "session-memory: you committed today but there is no recent (today/yesterday) "
+                    "OPEN sessions/ journal entry. Run /session-chronicle to checkpoint "
+                    "this session before finishing.\n")
+                sys.exit(2)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

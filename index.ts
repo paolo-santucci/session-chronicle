@@ -2,7 +2,9 @@ import { tool, type Plugin } from "@opencode-ai/plugin"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const SCRIPTS = join(import.meta.dirname, "scripts")
+const SCRIPTS = join(import.meta.dirname, "skill", "session-chronicle", "scripts")
+
+const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"]
 
 type ExecResult = { code: number; stdout: string; stderr: string }
 
@@ -26,12 +28,17 @@ async function exec(cmd: string[], env: Record<string, string>, stdin?: string):
 }
 
 function docsRoot(worktree: string): string {
-  try {
-    const fm = readFileSync(join(worktree, "CLAUDE.md"), "utf8").match(/^---\s*\n([\s\S]*?)\n---/)
-    const m = fm?.[1]?.match(/^docs-root:\s*(.*)$/m)
-    if (m) return m[1].trim().replace(/^["']|["']$/g, "")
-  } catch {}
-  return ".claude/docs"
+  for (const name of INSTRUCTION_FILES) {
+    try {
+      const fm = readFileSync(join(worktree, name), "utf8").match(/^---\s*\n([\s\S]*?)\n---/)
+      const m = fm?.[1]?.match(/^docs-root:\s*(.*)$/m)
+      if (m) {
+        const declared = m[1].trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "")
+        if (declared) return declared
+      }
+    } catch {}
+  }
+  return "docs"
 }
 
 const CC_TOOL: Record<string, string> = { write: "Write", edit: "Edit", bash: "Bash" }
@@ -57,7 +64,7 @@ function ccToolInput(toolName: string, args: any): Record<string, unknown> {
  * this module only adapts OpenCode hook shapes to their Claude-Code stdin contract.
  */
 export const SessionChronicle: Plugin = async ({ worktree, client }) => {
-  const env = { CLAUDE_PROJECT_DIR: worktree }
+  const env = { PROJECT_ROOT: worktree }
   const py = (script: string, args: string[] = [], stdin?: string) =>
     exec(["python3", join(SCRIPTS, script), ...args], env, stdin)
   const sh = (script: string, args: string[] = []) =>
@@ -93,6 +100,33 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
     }
   }
 
+  const lastDispatch = new Map<string, number>()
+  const CHECKPOINT_COOLDOWN_MS = Number(process.env.SESSION_CHRONICLE_CHECKPOINT_COOLDOWN_MS || "300000")
+
+  function checkpointModel(): string | undefined {
+    const raw = process.env.SESSION_CHRONICLE_MODEL
+    return raw && raw.trim() ? raw.trim() : undefined
+  }
+
+  function dispatchCheckpoint(sessionID: string): boolean {
+    const now = Date.now()
+    const last = lastDispatch.get(sessionID)
+    if (last !== undefined && now - last < CHECKPOINT_COOLDOWN_MS) return false
+    lastDispatch.set(sessionID, now)
+    const model = checkpointModel()
+    client.session
+      .command({
+        path: { id: sessionID },
+        body: {
+          command: "session-chronicle",
+          arguments: "auto-checkpoint",
+          ...(model ? { model } : {}),
+        },
+      })
+      .catch(() => {})
+    return true
+  }
+
   return {
     "chat.message": async (input, output) => {
       if (!input.sessionID || (await isChildSession(input.sessionID))) return
@@ -107,6 +141,10 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
       const inject: string[] = []
       if (!greeted.has(input.sessionID)) {
         greeted.add(input.sessionID)
+        inject.push(
+          `[session-chronicle] This project keeps a chronological session journal under ${docsRoot(worktree)}/sessions/. ` +
+            `You maintain it — run /session-chronicle at every checkpoint: after a logical group of work, after every commit, and at end-of-session.`,
+        )
         const idx = await sh("topic-index.sh")
         if (idx.stdout.trim()) inject.push(idx.stdout.trim())
       }
@@ -114,6 +152,11 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
         const hit = await py("retrieve-inject.py", [], hookPayload({ prompt }))
         if (hit.stdout.trim()) inject.push(hit.stdout.trim())
       }
+      const buffered = draftSignals()
+      if (buffered > 0)
+        inject.push(
+          `[session-chronicle] ${buffered} uncrystallised signal(s) are buffered — run /session-chronicle at the next checkpoint, then truncate the draft.`,
+        )
       const nudge = pendingNudge.get(input.sessionID)
       if (nudge) {
         pendingNudge.delete(input.sessionID)
@@ -164,8 +207,9 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
       const sessionID = (event as any).properties?.sessionID
       if (!sessionID || (await isChildSession(sessionID))) return
       const res = await py("checkpoint-nudge.py", [], hookPayload({}))
-      if (res.code === 2 && res.stderr.trim())
-        pendingNudge.set(sessionID, `[session-chronicle] ${res.stderr.trim()}`)
+      if (res.code !== 2 || !res.stderr.trim()) return
+      const nudge = `[session-chronicle] ${res.stderr.trim()}`
+      if (!dispatchCheckpoint(sessionID)) pendingNudge.set(sessionID, nudge)
     },
 
     "experimental.session.compacting": async (_input, output) => {
