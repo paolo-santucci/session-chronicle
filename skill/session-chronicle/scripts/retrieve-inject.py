@@ -3,7 +3,7 @@
 
 Deterministically (lexically) matches the user's prompt against the project's
 session/topic notes and injects the top-k note *bodies* (frontmatter stripped,
-budgeted) into context, so Claude actually re-reads relevant memory. The budget is
+budgeted) to stdout, so the agent actually re-reads relevant memory. The budget is
 measured in CHARACTERS (a cheap proxy for tokens, ~4 chars/token), not tokens.
 
 Ranking refinements (all zero injected-token cost):
@@ -12,8 +12,9 @@ Ranking refinements (all zero injected-token cost):
   length normalisation stops long notes from outranking short ones on raw counts.
 - SYNONYMS expands the query internally (acronym <-> spelt-out form), so "JWT"
   matches a note that only says "json web token". The expansion is never injected.
-- Scan is recency-tiered: files are visited newest-mtime-first and capped at
-  MEMORY_INJECT_MAX_SCAN, keeping hook latency bounded as the memory grows.
+- Ranking candidates are recency-tiered and capped at MEMORY_INJECT_MAX_SCAN.
+  Automatic retrieval excludes factual-evidence headers before that cap;
+  discovery/header classification still grows with the number of files.
 - TYPE_BOOST weights distilled topic notes above raw session logs via the
   frontmatter `type:` field (enum here is session|topic — importance lives in
   the note kind, not in a decision/learning taxonomy).
@@ -24,9 +25,13 @@ so on any error this prints nothing and exits 0.
 
 Tunables (env): MEMORY_INJECT_BUDGET_CHARS (default 6000), MEMORY_INJECT_TOPK
 (default 3), MEMORY_INJECT_MAX_SCAN (default 60 files ~= 2 months at 1 note/day).
+Explicit callers can set include_factual: true in the input JSON.
 """
 import sys, os, json, re, glob
 from collections import Counter
+
+from _docsroot import resolve_base
+from _session_notes import preferred_paths
 
 BUDGET = int(os.environ.get("MEMORY_INJECT_BUDGET_CHARS", "6000"))
 TOP_K = int(os.environ.get("MEMORY_INJECT_TOPK", "3"))
@@ -85,6 +90,21 @@ def fm_get(fm, key):
     return m.group(1).strip().strip("'\"") if m else ""
 
 
+def is_factual(path):
+    frontmatter = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as source:
+            if source.readline().strip() != "---":
+                return False
+            for line in source:
+                if line.strip() == "---":
+                    break
+                frontmatter.append(line)
+    except OSError:
+        return False
+    return fm_get("".join(frontmatter), "record-kind") == "factual-evidence"
+
+
 def toks(s):
     return [t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if len(t) > 2 and t not in STOP]
 
@@ -112,15 +132,14 @@ def main():
     if not prompt:
         return
 
-    proj = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
-    docs_root = fm_get(split_fm(read(os.path.join(proj, "CLAUDE.md")))[0], "docs-root") or ".claude/docs"
-    base = os.path.join(proj, docs_root)
+    proj = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
+    base = resolve_base(proj)
 
     files = glob.glob(os.path.join(base, "sessions", "*.md")) + glob.glob(os.path.join(base, "topics", "*.md"))
     if not files:
         return
     files.sort(key=mtime, reverse=True)
-    files = files[:MAX_SCAN]
+    files = preferred_paths(files, base, data.get("include_factual") is True or data.get("includeEvidence") is True)
 
     qset = set(toks(prompt))
     if not qset:
@@ -130,7 +149,11 @@ def main():
              if len(t) > 2 and t not in STOP}
 
     docs = []
+    scanned = 0
     for f in files:
+        if scanned >= MAX_SCAN:
+            break
+        scanned += 1
         text = read(f)
         if not text:
             continue

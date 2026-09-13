@@ -12,6 +12,7 @@
     "index.ts",
     "scripts",
     "skill",
+    "command",
     "README.md"
   ],
   "keywords": [

@@ -23,7 +23,7 @@ async function exec(cmd: string[], env: Record<string, string>, stdin?: string):
     ])
     return { code, stdout, stderr }
   } catch {
-    return { code: 0, stdout: "", stderr: "" }
+    return { code: 1, stdout: "", stderr: "session-chronicle: subprocess unavailable" }
   }
 }
 
@@ -44,11 +44,12 @@ function docsRoot(worktree: string): string {
 const CC_TOOL: Record<string, string> = { write: "Write", edit: "Edit", bash: "Bash" }
 
 function ccToolInput(toolName: string, args: any): Record<string, unknown> {
-  if (toolName === "bash") return { command: args?.command ?? "" }
+  if (toolName === "bash") return { command: args?.command ?? "", workdir: args?.workdir }
   return {
     file_path: args?.filePath ?? args?.file_path ?? "",
     content: args?.content ?? "",
     new_string: args?.newString ?? args?.new_string ?? "",
+    old_string: args?.oldString ?? args?.old_string ?? "",
   }
 }
 
@@ -56,8 +57,8 @@ function ccToolInput(toolName: string, args: any): Record<string, unknown> {
  * OpenCode port of the session-chronicle memory system.
  *
  * Write-path: passive signal capture (`tool.execute.after`, `chat.message`),
- * append-only + secret guard (`tool.execute.before`), idle crystallisation
- * nudge (`session.idle`), compaction handoff (`experimental.session.compacting`).
+ * append-only + secret guard (`tool.execute.before`), factual checkpoints
+ * (`session.idle`), compaction handoff (`experimental.session.compacting`).
  * Read-path: session-start topic index and per-prompt BM25 retrieval injected
  * as synthetic message parts, plus `memory_*` tools for explicit recall.
  * All business logic stays in the original Python/Bash scripts under scripts/;
@@ -69,13 +70,10 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
     exec(["python3", join(SCRIPTS, script), ...args], env, stdin)
   const sh = (script: string, args: string[] = []) =>
     exec(["bash", join(SCRIPTS, script), ...args], env)
-  const hookPayload = (data: Record<string, unknown>) => JSON.stringify({ cwd: worktree, ...data })
+  const hookPayload = (data: Record<string, unknown>) =>
+    JSON.stringify({ cwd: worktree, project_root: worktree, ...data })
   const base = () => join(worktree, docsRoot(worktree))
-  const today = () => new Date().toISOString().slice(0, 10)
-  const draftFile = () => join(base(), ".drafts", `${today()}.draft.jsonl`)
-
   const greeted = new Set<string>()
-  const pendingNudge = new Map<string, string>()
   const childSession = new Map<string, boolean>()
 
   async function isChildSession(sessionID: string): Promise<boolean> {
@@ -90,42 +88,13 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
     return child
   }
 
-  function draftSignals(): number {
-    try {
-      return readFileSync(draftFile(), "utf8")
-        .split("\n")
-        .filter((l) => l.trim()).length
-    } catch {
-      return 0
-    }
+  async function persistCheckpoint(): Promise<boolean> {
+    const result = await py("checkpoint.py")
+    if (result.code !== 0) console.error(result.stderr)
+    return result.code === 0
   }
 
-  const lastDispatch = new Map<string, number>()
-  const CHECKPOINT_COOLDOWN_MS = Number(process.env.SESSION_CHRONICLE_CHECKPOINT_COOLDOWN_MS || "300000")
-
-  function checkpointModel(): string | undefined {
-    const raw = process.env.SESSION_CHRONICLE_MODEL
-    return raw && raw.trim() ? raw.trim() : undefined
-  }
-
-  function dispatchCheckpoint(sessionID: string): boolean {
-    const now = Date.now()
-    const last = lastDispatch.get(sessionID)
-    if (last !== undefined && now - last < CHECKPOINT_COOLDOWN_MS) return false
-    lastDispatch.set(sessionID, now)
-    const model = checkpointModel()
-    client.session
-      .command({
-        path: { id: sessionID },
-        body: {
-          command: "session-chronicle",
-          arguments: "auto-checkpoint",
-          ...(model ? { model } : {}),
-        },
-      })
-      .catch(() => {})
-    return true
-  }
+  await persistCheckpoint()
 
   return {
     "chat.message": async (input, output) => {
@@ -135,15 +104,20 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
         .map((p: any) => p.text ?? "")
         .join("\n")
         .trim()
-      if (prompt)
-        void py("capture-signals.py", [], hookPayload({ hook_event_name: "UserPromptSubmit", prompt }))
+      if (prompt) {
+        const captured = await py("capture-signals.py", [], hookPayload({
+          hook_event_name: "UserPromptSubmit", prompt, sessionID: input.sessionID, eventID: output.message.id,
+        }))
+        if (captured.code !== 0) console.error(captured.stderr)
+      }
+      await persistCheckpoint()
 
       const inject: string[] = []
       if (!greeted.has(input.sessionID)) {
         greeted.add(input.sessionID)
         inject.push(
           `[session-chronicle] This project keeps a chronological session journal under ${docsRoot(worktree)}/sessions/. ` +
-            `You maintain it — run /session-chronicle at every checkpoint: after a logical group of work, after every commit, and at end-of-session.`,
+            `Factual evidence is checkpointed without a model. /session-chronicle optionally adds a separate semantic summary; never truncate drafts or edit factual records.`,
         )
         const idx = await sh("topic-index.sh")
         if (idx.stdout.trim()) inject.push(idx.stdout.trim())
@@ -151,16 +125,6 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
       if (prompt) {
         const hit = await py("retrieve-inject.py", [], hookPayload({ prompt }))
         if (hit.stdout.trim()) inject.push(hit.stdout.trim())
-      }
-      const buffered = draftSignals()
-      if (buffered > 0)
-        inject.push(
-          `[session-chronicle] ${buffered} uncrystallised signal(s) are buffered — run /session-chronicle at the next checkpoint, then truncate the draft.`,
-        )
-      const nudge = pendingNudge.get(input.sessionID)
-      if (nudge) {
-        pendingNudge.delete(input.sessionID)
-        inject.push(nudge)
       }
       if (inject.length)
         output.parts.push({
@@ -183,6 +147,7 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
           hook_event_name: "PreToolUse",
           tool_name: cc,
           tool_input: ccToolInput(input.tool, output.args),
+          sessionID: input.sessionID,
         }),
       )
       if (res.code === 2) throw new Error(res.stderr.trim())
@@ -190,13 +155,16 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
 
     "tool.execute.after": async (input, output) => {
       const cc = CC_TOOL[input.tool]
-      if (!cc) return
+      if (!cc || (await isChildSession(input.sessionID))) return
       const shaped = hookPayload({
         hook_event_name: "PostToolUse",
         tool_name: cc,
         tool_input: ccToolInput(input.tool, input.args),
+        sessionID: input.sessionID,
+        eventID: input.callID,
       })
-      void py("capture-signals.py", [], shaped)
+      const captured = await py("capture-signals.py", [], shaped)
+      if (captured.code !== 0) console.error(captured.stderr)
       if (cc === "Bash") return
       const res = await py("note-lint.py", [], shaped)
       if (res.code === 2) output.output += `\n\n[session-chronicle note-lint] ${res.stderr.trim()}`
@@ -204,31 +172,31 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
 
     event: async ({ event }) => {
       if (event.type !== "session.idle") return
-      const sessionID = (event as any).properties?.sessionID
+      const sessionID = event.properties.sessionID
       if (!sessionID || (await isChildSession(sessionID))) return
-      const res = await py("checkpoint-nudge.py", [], hookPayload({}))
-      if (res.code !== 2 || !res.stderr.trim()) return
-      const nudge = `[session-chronicle] ${res.stderr.trim()}`
-      if (!dispatchCheckpoint(sessionID)) pendingNudge.set(sessionID, nudge)
+      await persistCheckpoint()
     },
 
-    "experimental.session.compacting": async (_input, output) => {
-      const n = draftSignals()
-      if (!n) return
+    "experimental.session.compacting": async (input, output) => {
+      if (await isChildSession(input.sessionID)) return
+      const persisted = await persistCheckpoint()
       output.context.push(
-        `session-chronicle: ${n} uncrystallised signal(s) are buffered in ${draftFile()}. ` +
-          `Preserve this fact in the summary: at the next checkpoint they must be distilled into ` +
-          `${docsRoot(worktree)}/sessions/ (session-chronicle workflow) and the draft truncated.`,
+        persisted
+          ? `session-chronicle: captured evidence persisted in ${docsRoot(worktree)}/sessions/. Factual records are not completion claims or decisions. Optional /session-chronicle enrichment must preserve them.`
+          : `session-chronicle: checkpoint failed; pending evidence is retained for retry. Do not truncate drafts.`,
       )
     },
 
     tool: {
       memory_find: tool({
         description:
-          "Search the project's session/topic memory notes by free-text query (BM25 over <docs-root>/sessions and <docs-root>/topics). Returns the top matching note bodies. Use when you need prior context on a subject but do not know its slug.",
-        args: { query: tool.schema.string().describe("Free-text query, e.g. 'auth middleware decision'") },
-        async execute({ query }) {
-          const res = await py("retrieve-inject.py", [], hookPayload({ prompt: query }))
+          "Search semantic session/topic memory by free-text query (BM25). Raw factual records are excluded unless includeEvidence is true. Use when you need prior context on a subject but do not know its slug.",
+        args: {
+          query: tool.schema.string().describe("Free-text query, e.g. 'auth middleware decision'"),
+          includeEvidence: tool.schema.boolean().optional().describe("Include raw factual evidence (default: false)"),
+        },
+        async execute({ query, includeEvidence }) {
+          const res = await py("retrieve-inject.py", [], hookPayload({ prompt: query, include_factual: includeEvidence === true }))
           return res.stdout.trim() || "(no matching memory notes)"
         },
       }),
@@ -267,6 +235,30 @@ export const SessionChronicle: Plugin = async ({ worktree, client }) => {
           const flag = mode === "candidates" ? "--materialization-candidates" : `--${mode}`
           const res = await py("memory-audit.py", [flag, "--base", base(), "--json"])
           return res.stdout.trim() || res.stderr.trim() || "(no findings)"
+        },
+      }),
+      memory_session_context: tool({
+        description:
+          "MUST use before /session-chronicle optional enrichment to get the trusted current SDK session identity, persisted sources, and semantic target. This is not historical memory search. The tool persists a checkpoint but does not create or edit semantic summaries.",
+        args: {},
+        async execute(_args, context) {
+          if (typeof context.sessionID !== "string" || !context.sessionID.trim()) {
+            return JSON.stringify({
+              error: {
+                code: "session_context_failed",
+                message: "Current SDK session identity is unavailable; retry from an active session.",
+              },
+            })
+          }
+          const res = await py("session-context.py", [], hookPayload({ session_id: context.sessionID }))
+          if (res.code === 0 && res.stdout.trim()) return res.stdout.trim()
+          if (res.stdout.trim()) return res.stdout.trim()
+          return JSON.stringify({
+            error: {
+              code: "session_context_failed",
+              message: `Could not resolve session context: ${res.stderr.trim() || "subprocess failed"}; inspect pending evidence and retry.`,
+            },
+          })
         },
       }),
     },

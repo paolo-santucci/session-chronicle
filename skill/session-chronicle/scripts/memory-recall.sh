@@ -15,10 +15,10 @@ if [ -z "$SLUG" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJ="${CLAUDE_PROJECT_DIR:-$PWD}"
-DOCS_ROOT=$(awk '/^---$/{f++; next} f==1 && /^docs-root:[[:space:]]*/{sub(/^docs-root:[[:space:]]*/, ""); gsub(/["'\''[:space:]]/, ""); print; exit}' "${PROJ}/CLAUDE.md" 2>/dev/null)
+PROJ="${PROJECT_ROOT:-$PWD}"
+DOCS_ROOT=$(python3 "${SCRIPT_DIR}/_docsroot.py" "$PROJ" 2>/dev/null) || DOCS_ROOT=""
 DOCS_ROOT="${DOCS_ROOT%/}"
-BASE="${PROJ}/${DOCS_ROOT:-.claude/docs}"
+BASE="${PROJ}/${DOCS_ROOT:-docs}"
 
 if [ "$MODE" = "--topic" ] || [ "$MODE" = "--all" ]; then
   echo "## [topic] ${SLUG}"
@@ -27,7 +27,7 @@ fi
 
 if [ "$MODE" = "--sessions" ] || [ "$MODE" = "--all" ]; then
   echo ""
-  echo "## sessions backlinking [[${SLUG}]] (read ${DOCS_ROOT:-.claude/docs}/sessions/<id>.md for detail)"
+  echo "## sessions backlinking [[${SLUG}]] (read ${DOCS_ROOT:-docs}/sessions/<id>.md for detail)"
   HITS=$(python3 "${SCRIPT_DIR}/backlinks.py" "$SLUG" --base "$BASE" 2>/dev/null)
   if [ -n "$HITS" ]; then
     echo "$HITS" | sed 's/^/- /'
