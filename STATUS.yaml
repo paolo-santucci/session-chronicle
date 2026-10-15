@@ -1,5 +1,5 @@
 schema-version: 2
-last-updated: "2026-10-15T22:06:00+02:00"
+last-updated: "2026-10-15T22:11:00+02:00"
 active-plan: null
 last-plan: null
 
@@ -53,6 +53,8 @@ long-plan:
 pending-consolidation: []
 
 recently-completed:
+  - date: "2026-10-15"
+    summary: "Committed the legacy bootstrap bundle and removed duplicate root scripts and obsolete hook settings; 325 tests and lint/typecheck pass."
   - date: "2026-10-15"
     summary: "Committed portable session-chronicle 0.2.0, four adapters, neutral workflows and repository/package rename; 325 tests pass."
 
@@ -142,15 +144,6 @@ in-progress:
       - ".opencode/plugins/session-chronicle.ts"
     next-step: "Resolve docs/uat-integration-request.md and native provenance gates."
     blocker: "Native parity and operational qualification blocked."
-  - title: "Pending pre-existing bundle and cleanup"
-    state: "Bootstrap, root duplicate deletions, and hooks-settings deletion remain excluded by user."
-    touched:
-      - "skill/session-chronicle-bootstrap/"
-      - "command/session-chronicle-bootstrap.md"
-      - "scripts/"
-      - "skill/session-chronicle/references/hooks.settings.json"
-    next-step: "Review separately when requested."
-    blocker: null
 
 next-steps:
   - "Authorize installation separately, then verify compatible native runtimes and interactive/headless workflows."

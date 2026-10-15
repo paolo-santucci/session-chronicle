@@ -70,7 +70,11 @@ The UAT suite used `UAT_ROOT=/var/home/paolo/distrobox/any-dev/universal-agentic
 with the same absolute interpreter path. These are repeat checks, not additional
 tests in the total. This verifies the committed source set without local-only
 resources. The snapshot definition lint passed with 2 commands and 2 legacy skills;
-the previously excluded legacy bootstrap bundle remains outside this commit.
+the legacy bootstrap bundle was excluded from that initial implementation commit.
+
+After the user authorized its inclusion and the legacy-file deletions, all suites
+passed again (22 + 119 + 184 = 325), with typecheck and whitespace checks passing.
+Definition lint now covers 3 commands and 3 legacy skills with no errors/warnings.
 
 ## Native qualification
 
