@@ -25,7 +25,8 @@ def session_state(base, session_id):
             records = note_lint.factual_records(path.read_text())
             if note_lint.record_findings(fm, base) or note_lint.fm_get(fm, "batch-id") != path.stem:
                 raise ValueError("Invalid factual batch metadata; repair before retrying")
-            if any(note_lint.record_session_id(record) == session_id for record in records):
+            identities = [note_lint.require_unambiguous_identity(record) for record in records]
+            if session_id in identities:
                 sources.append(path.stem)
         elif kind in ("semantic-summary", "session-presentation"):
             identity = note_lint.fm_get(fm, "session-id")

@@ -1,0 +1,183 @@
+{
+  "schema-version": 1,
+  "kind": "plugin",
+  "id": "session-chronicle",
+  "description": "Portable selective session evidence and shared project memory; native integration remains unqualified.",
+  "version": "0.2.0",
+  "requires": {
+    "agents": [],
+    "skills": [],
+    "plugins": []
+  },
+  "capabilities": {
+    "required": [
+      "chronicle.capture",
+      "chronicle.retrieval",
+      "chronicle.session-context",
+      "chronicle.protected-history"
+    ],
+    "optional": []
+  },
+  "adapters": {
+    "opencode": {
+      "files": {
+        "adapters/opencode/entry.ts": ".opencode/plugins/session-chronicle/index.ts",
+        "adapters/opencode/index.ts": ".opencode/plugins/session-chronicle/adapters/opencode/index.ts",
+        "adapters/shared/worker-client.ts": ".opencode/plugins/session-chronicle/adapters/shared/worker-client.ts",
+        "skill/session-chronicle/scripts/_capture.py": ".opencode/plugins/session-chronicle/core/_capture.py",
+        "skill/session-chronicle/scripts/_checkpoint.py": ".opencode/plugins/session-chronicle/core/_checkpoint.py",
+        "skill/session-chronicle/scripts/_docsroot.py": ".opencode/plugins/session-chronicle/core/_docsroot.py",
+        "skill/session-chronicle/scripts/_guards.py": ".opencode/plugins/session-chronicle/core/_guards.py",
+        "skill/session-chronicle/scripts/_identity.py": ".opencode/plugins/session-chronicle/core/_identity.py",
+        "skill/session-chronicle/scripts/_memory_read.py": ".opencode/plugins/session-chronicle/core/_memory_read.py",
+        "skill/session-chronicle/scripts/_portable.py": ".opencode/plugins/session-chronicle/core/_portable.py",
+        "skill/session-chronicle/scripts/_session_notes.py": ".opencode/plugins/session-chronicle/core/_session_notes.py",
+        "skill/session-chronicle/scripts/_storage_paths.py": ".opencode/plugins/session-chronicle/core/_storage_paths.py",
+        "skill/session-chronicle/scripts/_topic_graph.py": ".opencode/plugins/session-chronicle/core/_topic_graph.py",
+        "skill/session-chronicle/scripts/backlinks.py": ".opencode/plugins/session-chronicle/core/backlinks.py",
+        "skill/session-chronicle/scripts/capture-signals.py": ".opencode/plugins/session-chronicle/core/capture-signals.py",
+        "skill/session-chronicle/scripts/checkpoint.py": ".opencode/plugins/session-chronicle/core/checkpoint.py",
+        "skill/session-chronicle/scripts/chronicle.py": ".opencode/plugins/session-chronicle/core/chronicle.py",
+        "skill/session-chronicle/scripts/memory-audit.py": ".opencode/plugins/session-chronicle/core/memory-audit.py",
+        "skill/session-chronicle/scripts/memory-recall.sh": ".opencode/plugins/session-chronicle/core/memory-recall.sh",
+        "skill/session-chronicle/scripts/note-lint.py": ".opencode/plugins/session-chronicle/core/note-lint.py",
+        "skill/session-chronicle/scripts/retrieve-inject.py": ".opencode/plugins/session-chronicle/core/retrieve-inject.py",
+        "skill/session-chronicle/scripts/session-context.py": ".opencode/plugins/session-chronicle/core/session-context.py",
+        "skill/session-chronicle/scripts/slugify.py": ".opencode/plugins/session-chronicle/core/slugify.py",
+        "skill/session-chronicle/scripts/sync-topics-field.py": ".opencode/plugins/session-chronicle/core/sync-topics-field.py",
+        "skill/session-chronicle/scripts/topic-index.sh": ".opencode/plugins/session-chronicle/core/topic-index.sh",
+        "skill/session-chronicle/scripts/topic-maintenance.py": ".opencode/plugins/session-chronicle/core/topic-maintenance.py",
+        "skill/session-chronicle/scripts/topic-patch-lint.py": ".opencode/plugins/session-chronicle/core/topic-patch-lint.py"
+      },
+      "capabilities": {
+        "chronicle.capture": "unsupported",
+        "chronicle.retrieval": "unverified",
+        "chronicle.session-context": "unverified",
+        "chronicle.protected-history": "unverified"
+      },
+      "activation": [
+        "Require Python 3.11+ on PATH and the OpenCode @opencode/plugin 2.0.26 host API. Tool capture is implemented; complete capture is unsupported while original-user prompt provenance is unavailable. After resolving that native contract and UAT custom-tool policy, restart the server and qualify exact rendered files. UAT currently marks external plugin requirements unsupported; sync is blocked."
+      ]
+    },
+    "claude-code": {
+      "files": {
+        "adapters/claude-code/hook.py": ".claude/hooks/session-chronicle/adapters/claude-code/hook.py",
+        "adapters/claude-code/hooks.fragment.json": ".claude/hooks/session-chronicle/adapters/claude-code/hooks.fragment.json",
+        "adapters/shared/worker-client.ts": ".claude/hooks/session-chronicle/adapters/shared/worker-client.ts",
+        "skill/session-chronicle/scripts/_capture.py": ".claude/hooks/session-chronicle/core/_capture.py",
+        "skill/session-chronicle/scripts/_checkpoint.py": ".claude/hooks/session-chronicle/core/_checkpoint.py",
+        "skill/session-chronicle/scripts/_docsroot.py": ".claude/hooks/session-chronicle/core/_docsroot.py",
+        "skill/session-chronicle/scripts/_guards.py": ".claude/hooks/session-chronicle/core/_guards.py",
+        "skill/session-chronicle/scripts/_identity.py": ".claude/hooks/session-chronicle/core/_identity.py",
+        "skill/session-chronicle/scripts/_memory_read.py": ".claude/hooks/session-chronicle/core/_memory_read.py",
+        "skill/session-chronicle/scripts/_portable.py": ".claude/hooks/session-chronicle/core/_portable.py",
+        "skill/session-chronicle/scripts/_session_notes.py": ".claude/hooks/session-chronicle/core/_session_notes.py",
+        "skill/session-chronicle/scripts/_storage_paths.py": ".claude/hooks/session-chronicle/core/_storage_paths.py",
+        "skill/session-chronicle/scripts/_topic_graph.py": ".claude/hooks/session-chronicle/core/_topic_graph.py",
+        "skill/session-chronicle/scripts/backlinks.py": ".claude/hooks/session-chronicle/core/backlinks.py",
+        "skill/session-chronicle/scripts/capture-signals.py": ".claude/hooks/session-chronicle/core/capture-signals.py",
+        "skill/session-chronicle/scripts/checkpoint.py": ".claude/hooks/session-chronicle/core/checkpoint.py",
+        "skill/session-chronicle/scripts/chronicle.py": ".claude/hooks/session-chronicle/core/chronicle.py",
+        "skill/session-chronicle/scripts/memory-audit.py": ".claude/hooks/session-chronicle/core/memory-audit.py",
+        "skill/session-chronicle/scripts/memory-recall.sh": ".claude/hooks/session-chronicle/core/memory-recall.sh",
+        "skill/session-chronicle/scripts/note-lint.py": ".claude/hooks/session-chronicle/core/note-lint.py",
+        "skill/session-chronicle/scripts/retrieve-inject.py": ".claude/hooks/session-chronicle/core/retrieve-inject.py",
+        "skill/session-chronicle/scripts/session-context.py": ".claude/hooks/session-chronicle/core/session-context.py",
+        "skill/session-chronicle/scripts/slugify.py": ".claude/hooks/session-chronicle/core/slugify.py",
+        "skill/session-chronicle/scripts/sync-topics-field.py": ".claude/hooks/session-chronicle/core/sync-topics-field.py",
+        "skill/session-chronicle/scripts/topic-index.sh": ".claude/hooks/session-chronicle/core/topic-index.sh",
+        "skill/session-chronicle/scripts/topic-maintenance.py": ".claude/hooks/session-chronicle/core/topic-maintenance.py",
+        "skill/session-chronicle/scripts/topic-patch-lint.py": ".claude/hooks/session-chronicle/core/topic-patch-lint.py"
+      },
+      "capabilities": {
+        "chronicle.capture": "unsupported",
+        "chronicle.retrieval": "unverified",
+        "chronicle.session-context": "unsupported",
+        "chronicle.protected-history": "unverified"
+      },
+      "activation": [
+        "Require Python 3.11+ on PATH. Native tool observations, retrieval and guards are implemented; prompt-origin and trusted custom-tool transport contracts are missing. Chronicle hooks are not composed into UAT-owned .claude/settings.json; fragments are inert. Resolve contracts, preserve status/statistics, accept native trust and qualify before activation. UAT currently blocks sync."
+      ]
+    },
+    "codex": {
+      "files": {
+        "adapters/codex/hook.py": ".codex/hooks/session-chronicle/adapters/codex/hook.py",
+        "adapters/codex/hooks.fragment.json": ".codex/hooks/session-chronicle/adapters/codex/hooks.fragment.json",
+        "adapters/shared/worker-client.ts": ".codex/hooks/session-chronicle/adapters/shared/worker-client.ts",
+        "skill/session-chronicle/scripts/_capture.py": ".codex/hooks/session-chronicle/core/_capture.py",
+        "skill/session-chronicle/scripts/_checkpoint.py": ".codex/hooks/session-chronicle/core/_checkpoint.py",
+        "skill/session-chronicle/scripts/_docsroot.py": ".codex/hooks/session-chronicle/core/_docsroot.py",
+        "skill/session-chronicle/scripts/_guards.py": ".codex/hooks/session-chronicle/core/_guards.py",
+        "skill/session-chronicle/scripts/_identity.py": ".codex/hooks/session-chronicle/core/_identity.py",
+        "skill/session-chronicle/scripts/_memory_read.py": ".codex/hooks/session-chronicle/core/_memory_read.py",
+        "skill/session-chronicle/scripts/_portable.py": ".codex/hooks/session-chronicle/core/_portable.py",
+        "skill/session-chronicle/scripts/_session_notes.py": ".codex/hooks/session-chronicle/core/_session_notes.py",
+        "skill/session-chronicle/scripts/_storage_paths.py": ".codex/hooks/session-chronicle/core/_storage_paths.py",
+        "skill/session-chronicle/scripts/_topic_graph.py": ".codex/hooks/session-chronicle/core/_topic_graph.py",
+        "skill/session-chronicle/scripts/backlinks.py": ".codex/hooks/session-chronicle/core/backlinks.py",
+        "skill/session-chronicle/scripts/capture-signals.py": ".codex/hooks/session-chronicle/core/capture-signals.py",
+        "skill/session-chronicle/scripts/checkpoint.py": ".codex/hooks/session-chronicle/core/checkpoint.py",
+        "skill/session-chronicle/scripts/chronicle.py": ".codex/hooks/session-chronicle/core/chronicle.py",
+        "skill/session-chronicle/scripts/memory-audit.py": ".codex/hooks/session-chronicle/core/memory-audit.py",
+        "skill/session-chronicle/scripts/memory-recall.sh": ".codex/hooks/session-chronicle/core/memory-recall.sh",
+        "skill/session-chronicle/scripts/note-lint.py": ".codex/hooks/session-chronicle/core/note-lint.py",
+        "skill/session-chronicle/scripts/retrieve-inject.py": ".codex/hooks/session-chronicle/core/retrieve-inject.py",
+        "skill/session-chronicle/scripts/session-context.py": ".codex/hooks/session-chronicle/core/session-context.py",
+        "skill/session-chronicle/scripts/slugify.py": ".codex/hooks/session-chronicle/core/slugify.py",
+        "skill/session-chronicle/scripts/sync-topics-field.py": ".codex/hooks/session-chronicle/core/sync-topics-field.py",
+        "skill/session-chronicle/scripts/topic-index.sh": ".codex/hooks/session-chronicle/core/topic-index.sh",
+        "skill/session-chronicle/scripts/topic-maintenance.py": ".codex/hooks/session-chronicle/core/topic-maintenance.py",
+        "skill/session-chronicle/scripts/topic-patch-lint.py": ".codex/hooks/session-chronicle/core/topic-patch-lint.py"
+      },
+      "capabilities": {
+        "chronicle.capture": "unsupported",
+        "chronicle.retrieval": "unverified",
+        "chronicle.session-context": "unsupported",
+        "chronicle.protected-history": "unverified"
+      },
+      "activation": [
+        "Require Python 3.11+ on PATH and a Git worktree for UAT hooks. Native actor/origin, stable prompt-event identity, tool-result success and trusted custom-tool transport contracts are missing. Chronicle fragments remain inert outside UAT-owned .codex/hooks.json. Resolve contracts and composition, retain status/statistics and native trust, then qualify supported coverage. UAT currently blocks sync."
+      ]
+    },
+    "pi": {
+      "files": {
+        "adapters/pi/entry.ts": ".pi/extensions/session-chronicle/index.ts",
+        "adapters/pi/index.ts": ".pi/extensions/session-chronicle/adapters/pi/index.ts",
+        "adapters/shared/worker-client.ts": ".pi/extensions/session-chronicle/adapters/shared/worker-client.ts",
+        "skill/session-chronicle/scripts/_capture.py": ".pi/extensions/session-chronicle/core/_capture.py",
+        "skill/session-chronicle/scripts/_checkpoint.py": ".pi/extensions/session-chronicle/core/_checkpoint.py",
+        "skill/session-chronicle/scripts/_docsroot.py": ".pi/extensions/session-chronicle/core/_docsroot.py",
+        "skill/session-chronicle/scripts/_guards.py": ".pi/extensions/session-chronicle/core/_guards.py",
+        "skill/session-chronicle/scripts/_identity.py": ".pi/extensions/session-chronicle/core/_identity.py",
+        "skill/session-chronicle/scripts/_memory_read.py": ".pi/extensions/session-chronicle/core/_memory_read.py",
+        "skill/session-chronicle/scripts/_portable.py": ".pi/extensions/session-chronicle/core/_portable.py",
+        "skill/session-chronicle/scripts/_session_notes.py": ".pi/extensions/session-chronicle/core/_session_notes.py",
+        "skill/session-chronicle/scripts/_storage_paths.py": ".pi/extensions/session-chronicle/core/_storage_paths.py",
+        "skill/session-chronicle/scripts/_topic_graph.py": ".pi/extensions/session-chronicle/core/_topic_graph.py",
+        "skill/session-chronicle/scripts/backlinks.py": ".pi/extensions/session-chronicle/core/backlinks.py",
+        "skill/session-chronicle/scripts/capture-signals.py": ".pi/extensions/session-chronicle/core/capture-signals.py",
+        "skill/session-chronicle/scripts/checkpoint.py": ".pi/extensions/session-chronicle/core/checkpoint.py",
+        "skill/session-chronicle/scripts/chronicle.py": ".pi/extensions/session-chronicle/core/chronicle.py",
+        "skill/session-chronicle/scripts/memory-audit.py": ".pi/extensions/session-chronicle/core/memory-audit.py",
+        "skill/session-chronicle/scripts/memory-recall.sh": ".pi/extensions/session-chronicle/core/memory-recall.sh",
+        "skill/session-chronicle/scripts/note-lint.py": ".pi/extensions/session-chronicle/core/note-lint.py",
+        "skill/session-chronicle/scripts/retrieve-inject.py": ".pi/extensions/session-chronicle/core/retrieve-inject.py",
+        "skill/session-chronicle/scripts/session-context.py": ".pi/extensions/session-chronicle/core/session-context.py",
+        "skill/session-chronicle/scripts/slugify.py": ".pi/extensions/session-chronicle/core/slugify.py",
+        "skill/session-chronicle/scripts/sync-topics-field.py": ".pi/extensions/session-chronicle/core/sync-topics-field.py",
+        "skill/session-chronicle/scripts/topic-index.sh": ".pi/extensions/session-chronicle/core/topic-index.sh",
+        "skill/session-chronicle/scripts/topic-maintenance.py": ".pi/extensions/session-chronicle/core/topic-maintenance.py",
+        "skill/session-chronicle/scripts/topic-patch-lint.py": ".pi/extensions/session-chronicle/core/topic-patch-lint.py"
+      },
+      "capabilities": {
+        "chronicle.capture": "unsupported",
+        "chronicle.retrieval": "unsupported",
+        "chronicle.session-context": "unsupported",
+        "chronicle.protected-history": "unsupported"
+      },
+      "activation": [
+        "Require Python 3.11+ on PATH and Pi 1.2.0 extension host dependencies. Explicit read tools and selective deny guards are implemented; automatic capture/injection, trusted session enrichment and positive protected writes require missing actor/event provenance. Resolve those native and UAT custom-tool contracts before trust/reload and qualification. UAT currently blocks sync."
+      ]
+    }
+  }
+}

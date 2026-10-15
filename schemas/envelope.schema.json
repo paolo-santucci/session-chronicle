@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:chronicle:envelope:v1",
+  "title": "Chronicle trusted runtime envelope",
+  "description": "Adapters supply context, never model-callable arguments. workspace must be an absolute existing directory; no cwd/environment fallback. Unknown roles may read and guard unrelated source writes, but cannot mutate memory or guard protected targets. Capture/checkpoint skip delegated sessions; context and continuation require primary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation", "context", "arguments"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "operation": {"enum": ["capture", "checkpoint", "context", "find", "recall", "backlinks", "audit", "index", "guard", "continuation", "recover"]},
+    "context": {"type": "object"},
+    "arguments": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {
+      "operation": {"const": "recover"},
+      "context": {"$ref": "#/$defs/recovery-context"},
+      "arguments": {"type": "object", "maxProperties": 0}
+    }},
+    {"properties": {
+      "operation": {"not": {"const": "recover"}},
+      "context": {"$ref": "#/$defs/session-context"}
+    }}
+  ],
+  "allOf": [
+    {"if": {"properties": {"operation": {"enum": ["checkpoint", "context", "index"]}}}, "then": {"properties": {"arguments": {"type": "object", "maxProperties": 0}}}},
+    {"if": {"properties": {"operation": {"const": "capture"}}}, "then": {"properties": {"arguments": {"$ref": "#/$defs/capture"}}}},
+    {"if": {"properties": {"operation": {"const": "guard"}}}, "then": {"properties": {"arguments": {"$ref": "#/$defs/guard"}}}},
+    {"if": {"properties": {"operation": {"const": "find"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["query"],
+      "properties": {"query": {"$ref": "#/$defs/text"}, "includeEvidence": {"type": "boolean"}}
+    }}}},
+    {"if": {"properties": {"operation": {"const": "recall"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["slug"],
+      "properties": {"slug": {"$ref": "#/$defs/slug"}, "scope": {"enum": ["all", "topic", "sessions"]}}
+    }}}},
+    {"if": {"properties": {"operation": {"const": "backlinks"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["slug"], "properties": {"slug": {"$ref": "#/$defs/slug"}}
+    }}}},
+    {"if": {"properties": {"operation": {"const": "audit"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["mode"],
+      "properties": {"mode": {"enum": ["orphans", "dups", "dangling", "stale", "candidates", "quality"]}}
+    }}}},
+    {"if": {"properties": {"operation": {"const": "continuation"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["from", "sources"],
+      "properties": {
+        "from": {"$ref": "identity.schema.json"},
+        "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}--evidence-[a-f0-9]{32}$"}},
+        "reason": {"$ref": "#/$defs/text"}
+      }
+    }}}}
+  ],
+  "$defs": {
+    "recovery-context": {
+      "description": "Adapter-internal setup context only; no session identity, role, capture or current-session enrichment. Publishes already attributed pending evidence without inferring a harness for historical records.",
+      "type": "object", "additionalProperties": false, "required": ["harness", "workspace"],
+      "properties": {
+        "harness": {"enum": ["opencode", "claude-code", "codex", "pi"]},
+        "workspace": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "session-context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["harness", "session_id", "workspace", "role"],
+      "properties": {
+        "harness": {"enum": ["opencode", "claude-code", "codex", "pi"]},
+        "session_id": {"$ref": "#/$defs/text"},
+        "workspace": {"type": "string", "pattern": "^/"},
+        "role": {"enum": ["primary", "delegated", "unknown"]}
+      }
+    },
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S", "not": {"pattern": "\u0000"}},
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "capture": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation", "event_id", "status", "origin"],
+      "properties": {
+        "operation": {"enum": ["prompt.submit", "files.write", "files.edit", "files.patch", "process.exec"]},
+        "event_id": {"$ref": "#/$defs/text"},
+        "status": {"enum": ["completed", "error"]},
+        "origin": {"enum": ["user", "synthetic", "unknown"]},
+        "text": {"type": "string"}, "path": {"$ref": "#/$defs/text"},
+        "command": {"type": "string"}, "workdir": {"$ref": "#/$defs/text"}
+      },
+      "allOf": [
+        {"if": {"properties": {"operation": {"const": "prompt.submit"}}}, "then": {"required": ["text"]}},
+        {"if": {"properties": {"operation": {"enum": ["files.write", "files.edit", "files.patch"]}}}, "then": {"required": ["path"]}},
+        {"if": {"properties": {"operation": {"const": "process.exec"}}}, "then": {"required": ["command"]}}
+      ]
+    },
+    "guard": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {
+        "kind": {"enum": ["replace", "edit", "patch"]}, "phase": {"enum": ["pre", "post"], "default": "pre"},
+        "path": {"$ref": "#/$defs/text"}, "content": {"type": "string"},
+        "old_text": {"$ref": "#/$defs/text"}, "new_text": {"type": "string"},
+        "replace_all": {"type": "boolean"}, "patch": {"$ref": "#/$defs/text"}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "patch"}}}, "then": {"required": ["patch"]}, "else": {"required": ["path"]}},
+        {"if": {"properties": {"kind": {"const": "replace"}, "phase": {"const": "pre"}}}, "then": {"required": ["content"]}},
+        {"if": {"properties": {"kind": {"const": "edit"}, "phase": {"const": "pre"}}}, "then": {"required": ["old_text", "new_text"]}}
+      ]
+    }
+  }
+}

@@ -5,8 +5,10 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["index.ts", "index.test.ts"]
+  "include": ["index.ts", "index.test.ts", "adapters/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["adapters/**/entry.ts"]
 }

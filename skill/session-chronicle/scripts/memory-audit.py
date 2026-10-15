@@ -1,149 +1,107 @@
 #!/usr/bin/env python3
-"""Audit the session-memory graph (anti-entropy). stdlib only.
+"""Read-only graph audit; recurrence is distinct session identity, not file count."""
+import argparse
+import datetime
+import json
+import sys
 
-Modes (combine freely; default = run all, human summary):
-  --orphans                       topic notes with 0 backlinks in sessions/
-  --dups                          topic slugs/aliases that are near-duplicates (same stem)
-  --dangling                      [[wikilinks]] in sessions/ with no topic note (count each)
-  --materialization-candidates    slugs in >= --threshold N (default 2) distinct sessions, no note
-  --stale                         topic notes whose `updated:` is older than --days D (default 90)
-  --json                          machine output
-  --base DIR                      memory root (contains sessions/ and topics/); default '.'
-"""
-import sys, os, re, glob, json, datetime
+from _topic_graph import TopicGraph, REVIEW_NOTICE, RESOLUTION_CODES, body_links, string_list, valid_slug
 
 
-def _read(p):
-    try:
-        with open(p, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except Exception:
-        return ""
+def stem(slug):
+    for suffix in ("ies", "es", "s"):
+        if slug.endswith(suffix) and len(slug) - len(suffix) >= 4:
+            return slug[:-len(suffix)]
+    return slug
 
 
-def _fm(text):
-    m = re.match(r"^---\s*\n(.*?)\n---", text or "", re.S)
-    return m.group(1) if m else ""
+def dangling_sessions(graph):
+    counts = {}
+    for links in graph.session_links().values():
+        for link in links:
+            if valid_slug(link) and graph.resolve(link) not in graph.topics:
+                counts[link] = counts.get(link, 0) + 1
+    return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
 
 
-def fm_get(fm, key):
-    m = re.search(r"^%s:\s*(.*)$" % re.escape(key), fm or "", re.M)
-    return m.group(1).strip().strip("'\"") if m else ""
+def orphan_topics(graph):
+    inbound = set()
+    for slug, note in graph.topics.items():
+        for link in body_links(note["body"]):
+            if valid_slug(link):
+                target = graph.resolve(link)
+                if target != slug:
+                    inbound.add(target)
+        inbound.update(graph.source_topics(slug) - {slug})
+        if graph.supporting_sessions(slug):
+            inbound.add(slug)
+    return sorted(set(graph.topics) - inbound)
 
 
-def stem(s):
-    # Conservative English plural fold (mirrors slugify.stem): only fold when the
-    # stem stays >= 4 chars, and never strip bare 'e'/'i'. Avoids false-positive
-    # --dups groupings like core/cors. Erring toward NO merge is the safe direction.
-    for suf in ("ies", "es", "s"):
-        if s.endswith(suf) and len(s) - len(suf) >= 4:
-            return s[:-len(suf)]
-    return s
+def duplicate_topics(graph):
+    groups = {}
+    for slug, note in graph.topics.items():
+        for name in [slug] + string_list(note["fields"], "aliases"):
+            groups.setdefault(stem(name), set()).add(slug)
+    return sorted(sorted(group) for group in groups.values() if len(group) > 1)
 
 
-def aliases(fm):
-    out = []
-    m = re.search(r"^aliases:\s*\[(.*?)\]", fm, re.M)
-    if m:
-        out += [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
-    m2 = re.search(r"^aliases:\s*\n((?:\s*-\s+.*\n?)+)", fm, re.M)
-    if m2:
-        out += [re.sub(r"^\s*-\s+", "", ln).strip().strip("'\"") for ln in m2.group(1).splitlines() if ln.strip()]
-    return [a for a in out if a]
-
-
-def load(base):
-    topics = {}
-    for f in glob.glob(os.path.join(base, "topics", "*.md")):
-        slug = os.path.splitext(os.path.basename(f))[0]
-        topics[slug] = _fm(_read(f))
-    sess = {}
-    for f in glob.glob(os.path.join(base, "sessions", "*.md")):
-        sid = os.path.splitext(os.path.basename(f))[0]
-        sess[sid] = set(re.findall(r"\[\[([a-z0-9][a-z0-9-]*)\]\]", _read(f)))
-    return topics, sess
-
-
-def name_index(topics):
-    idx = {}
-    for slug, fm in topics.items():
-        idx[slug] = slug
-        for a in aliases(fm):
-            idx[a] = slug
-    return idx
-
-
-def main(argv):
-    base = argv[argv.index("--base") + 1] if "--base" in argv else "."
-    topics, sess = load(base)
-    idx = name_index(topics)
-    flags = ("--orphans", "--dups", "--dangling", "--materialization-candidates", "--stale")
-    want_all = not any(f in argv for f in flags)
-    res = {}
-
-    if want_all or "--orphans" in argv:
-        counts = {s: 0 for s in topics}
-        for links in sess.values():
-            for c in {idx[ln] for ln in links if ln in idx}:
-                counts[c] += 1
-        res["orphans"] = sorted([s for s, c in counts.items() if c == 0])
-
-    if want_all or "--dups" in argv:
-        groups = {}
-        for slug, fm in topics.items():
-            for n in [slug] + aliases(fm):
-                groups.setdefault(stem(n), set()).add(slug)
-        res["dups"] = sorted([sorted(v) for v in groups.values() if len(v) > 1])
-
-    if want_all or "--dangling" in argv:
-        dangling = {}
-        for links in sess.values():
-            for ln in links:
-                if ln not in idx:
-                    dangling[ln] = dangling.get(ln, 0) + 1
-        res["dangling"] = dict(sorted(dangling.items(), key=lambda x: -x[1]))
-
-    if want_all or "--materialization-candidates" in argv:
-        thr = int(argv[argv.index("--threshold") + 1]) if "--threshold" in argv else 2
-        cand = {}
-        for links in sess.values():
-            for ln in set(links):
-                if ln not in idx:
-                    cand[ln] = cand.get(ln, 0) + 1
-        res["materialization_candidates"] = sorted([s for s, c in cand.items() if c >= thr])
-        res["_threshold"] = thr
-
-    if want_all or "--stale" in argv:
-        days = int(argv[argv.index("--days") + 1]) if "--days" in argv else 90
-        today = datetime.date.today()
+def audit(args):
+    graph = TopicGraph(args.base, include_evidence=False)
+    quality = graph.quality()
+    result = {}
+    if args.quality:
+        result.update(quality=quality, semantic_review_required=True, review_notice=REVIEW_NOTICE)
+    modes = (args.orphans, args.dups, args.dangling, args.materialization_candidates, args.stale, args.quality)
+    all_modes = not any(modes)
+    if all_modes or any(modes[:-1]):
+        errors = [item for item in quality if item["code"] in RESOLUTION_CODES]
+        if errors:
+            raise ValueError("Invalid topic graph: " + "; ".join(item["message"] for item in errors))
+    if all_modes or args.orphans:
+        result["orphans"] = orphan_topics(graph)
+    if all_modes or args.dups:
+        result["dups"] = duplicate_topics(graph)
+    if all_modes or args.dangling:
+        result["dangling"] = dangling_sessions(graph)
+        result["broken_topic_edges"] = [item for item in quality if item["code"] == "broken-topic-edge"]
+    if all_modes or args.materialization_candidates:
+        result["materialization_candidates"] = sorted(link for link, count in dangling_sessions(graph).items()
+                                                      if count >= args.threshold)
+        result["_threshold"] = args.threshold
+    if all_modes or args.stale:
         stale = []
-        for slug, fm in topics.items():
+        for slug, note in graph.topics.items():
             try:
-                if (today - datetime.date.fromisoformat(fm_get(fm, "updated"))).days > days:
+                updated = datetime.date.fromisoformat(note["fields"].get("updated", ""))
+                if (datetime.date.today() - updated).days > args.days:
                     stale.append(slug)
-            except Exception:
-                pass
-        res["stale"] = sorted(stale)
-        res["_stale_days"] = days
-
-    if "--json" in argv:
-        print(json.dumps(res, ensure_ascii=False))
-    else:
-        for k, v in res.items():
-            if k.startswith("_"):
+            except (TypeError, ValueError):
                 continue
-            print("== %s ==" % k)
-            if isinstance(v, dict):
-                for kk, vv in (v.items() or []):
-                    print("  %s: %s" % (kk, vv))
-                if not v:
-                    print("  (none)")
-            elif v:
-                for item in v:
-                    print("  %s" % (item,))
-            else:
-                print("  (none)")
+        result.update(stale=sorted(stale), _stale_days=args.days)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for mode in ("orphans", "dups", "dangling", "materialization-candidates", "stale", "quality", "json"):
+        parser.add_argument("--" + mode, action="store_true")
+    parser.add_argument("--base", default=".")
+    parser.add_argument("--threshold", type=int, default=2)
+    parser.add_argument("--days", type=int, default=90)
+    args = parser.parse_args()
+    result = audit(args)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        for key, value in result.items():
+            if not key.startswith("_"):
+                print(f"== {key} ==\n{json.dumps(value, ensure_ascii=False, indent=2)}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main()
+    except (ValueError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(2)

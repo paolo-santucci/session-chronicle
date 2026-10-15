@@ -9,9 +9,11 @@ from pathlib import Path
 import re
 import tempfile
 import uuid
+import stat
 
 
 from _session_notes import note_lint
+from _storage_paths import regular_file, storage_layout
 
 
 def sync_directory(path):
@@ -37,10 +39,16 @@ def ensure_directory(path):
 
 @contextlib.contextmanager
 def writer_lock(base):
+    storage_layout(base, inspect_files=False)
     drafts = Path(base) / ".drafts"
     ensure_directory(drafts)
-    with (drafts / ".writer.lock").open("a") as lock:
+    descriptor = os.open(drafts / ".writer.lock", os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "a") as lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError("Writer lock must be an unaliased regular file")
         fcntl.flock(lock, fcntl.LOCK_EX)
+        storage_layout(base)
         yield drafts
 
 
@@ -84,13 +92,33 @@ def render(batch):
 
 
 def evidence_records(batch):
+    regular_file(batch)
     return [json.loads(line) for line in batch.read_text().splitlines() if line.strip()]
+
+
+def validated_draft(draft):
+    regular_file(draft)
+    existing = draft.read_bytes().decode("utf-8") if draft.exists() else ""
+    records = [json.loads(line) for line in existing.splitlines() if line.strip()]
+    for record in records:
+        if not isinstance(record, dict) or record.get("kind") not in ("prompt", "file", "bash"):
+            raise ValueError("Malformed draft; preserve original bytes and repair before retrying")
+        note_lint.record_session_id(record)
+    return existing, records
+
+
+def append_record(draft, record):
+    """Caller holds writer_lock; malformed buffers remain byte-identical."""
+    existing, _ = validated_draft(draft)
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    update_presentation(draft, existing + json.dumps(record, ensure_ascii=True) + "\n")
 
 
 def session_groups(batch):
     groups = {}
     for record in evidence_records(batch):
-        session_id = note_lint.record_session_id(record)
+        session_id = note_lint.require_unambiguous_identity(record)
         if isinstance(session_id, str) and session_id:
             groups.setdefault(session_id, []).append(record)
     return groups
@@ -244,11 +272,13 @@ def publish_presentations(sessions, batch):
 
 
 def publish(destination, text):
+    regular_file(destination, publication_temporaries=True)
     encoded = text.encode()
     if destination.exists():
         if destination.read_bytes() != encoded:
             raise ValueError("Checkpoint publication conflict")
         sync_directory(destination.parent)
+        cleanup_publication_temporaries(destination)
         return
     descriptor, temporary = tempfile.mkstemp(prefix=".checkpoint-", dir=destination.parent)
     try:
@@ -262,7 +292,18 @@ def publish(destination, text):
         os.unlink(temporary)
 
 
+def cleanup_publication_temporaries(destination):
+    info = destination.stat()
+    for temporary in destination.parent.glob(".checkpoint-*"):
+        candidate = temporary.lstat()
+        if (stat.S_ISREG(candidate.st_mode) and
+                (candidate.st_dev, candidate.st_ino) == (info.st_dev, info.st_ino)):
+            temporary.unlink()
+    sync_directory(destination.parent)
+
+
 def update_presentation(destination, text):
+    regular_file(destination)
     encoded = text.encode()
     if destination.exists() and destination.read_bytes() == encoded:
         return
@@ -296,6 +337,7 @@ def checkpoint(base):
             sync_directory(pending)
             sync_directory(drafts)
         batches = sorted(pending.glob("*.jsonl"))
+        validate_identity_grouping(base)
         prevalidate_batches(sessions, batches)
         for batch in batches:
             destination = sessions / f"{batch.stem}.md"
@@ -305,3 +347,16 @@ def checkpoint(base):
             sync_directory(pending)
             published.append(str(destination))
     return published
+
+
+def validate_identity_grouping(base):
+    drafts = Path(base) / ".drafts"
+    for batch in list(drafts.glob("*.draft.jsonl")) + list((drafts / "pending").glob("*.jsonl")):
+        for record in evidence_records(batch):
+            note_lint.require_unambiguous_identity(record)
+    for path in (Path(base) / "sessions").glob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        fm, _ = note_lint.split_fm(text)
+        if note_lint.fm_get(fm, "record-kind") == "factual-evidence":
+            for record in note_lint.factual_records(text):
+                note_lint.require_unambiguous_identity(record)

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:chronicle:response:v1",
+  "oneOf": [
+    {"type": "object", "additionalProperties": false, "required": ["ok", "result"],
+     "properties": {"ok": {"const": true}, "result": {"type": ["object", "string"]}}},
+    {"type": "object", "additionalProperties": false, "required": ["ok", "error"],
+     "properties": {"ok": {"const": false}, "error": {
+       "type": "object", "additionalProperties": false, "required": ["code", "message"],
+       "properties": {"code": {"type": "string"}, "message": {"type": "string"}}
+     }}}
+  ]
+}

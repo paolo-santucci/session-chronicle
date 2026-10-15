@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event SessionStart", "timeout": 30}]}],
+    "PreToolUse": [{"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event PreToolUse", "timeout": 30}]}],
+    "PostToolUse": [{"matcher": "Write|Edit|Bash", "hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event PostToolUse", "timeout": 30}]}],
+    "PostToolUseFailure": [{"matcher": "Write|Edit|Bash", "hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event PostToolUseFailure", "timeout": 30}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event UserPromptSubmit", "timeout": 30}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event Stop", "timeout": 30}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event PreCompact", "timeout": 30}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/claude-code/hook.py' --event SessionEnd", "timeout": 30}]}]
+  }
+}

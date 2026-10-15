@@ -14,8 +14,7 @@ else exits 0 (not our concern).
   PostToolUse (Write|Edit): validate frontmatter schema + mandatory provenance.
 
 Exit 2 = block / report violation (stderr is surfaced by the plugin).
-Exit 0 = ok, or not a memory note, or an infrastructure error (never block real work
-         on our own bugs).
+Exit 0 = ok, or not a memory note. Validator errors fail closed.
 stdlib only (no PyYAML).
 """
 import sys, os, json, re, datetime
@@ -23,6 +22,9 @@ import hashlib
 from pathlib import Path
 
 from _docsroot import resolve_base
+from _identity import AmbiguousIdentity, canonical_identity, parse_identity
+from _storage_paths import regular_file
+from _topic_graph import parse_note, proposed_topic_findings, without_comment
 
 REDACT_PATTERNS = [
     ("GITHUB-TOKEN", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
@@ -67,7 +69,10 @@ def fm_get(fm, key):
     matches = re.findall(r"^%s:[ \t]*(.*)$" % re.escape(key), fm, re.M)
     if len(matches) != 1:
         return ""
-    value = matches[0].strip()
+    try:
+        value = without_comment(matches[0]).strip()
+    except ValueError:
+        return ""
     if value.startswith('"'):
         try:
             decoded = json.loads(value)
@@ -92,6 +97,10 @@ def fm_has(fm, key):
 
 def classify(path, base):
     p = os.path.realpath(path)
+    for folder in (".drafts", "pending", "continuations"):
+        protected = os.path.realpath(os.path.join(base, folder))
+        if p == protected or p.startswith(protected + os.sep):
+            return "protected"
     if p.startswith(os.path.realpath(os.path.join(base, "sessions")) + os.sep):
         return "session"
     if p.startswith(os.path.realpath(os.path.join(base, "topics")) + os.sep):
@@ -126,7 +135,7 @@ def source_ids(fm):
     return [value.strip().strip("'\"") for value in values if value.strip()]
 
 
-def record_findings(fm, base):
+def record_findings(fm, base, source_cache=None):
     kind = fm_get(fm, "record-kind")
     if not kind:
         return []
@@ -142,15 +151,16 @@ def record_findings(fm, base):
     sources = source_ids(fm)
     if not sources or len(sources) != len(set(sources)) or any(not is_batch_id(source) for source in sources):
         return [f"{kind} sources must be a non-empty list of factual batch IDs"]
+    cache = {} if source_cache is None else source_cache
+    validated = []
     for source in sources:
-        source_path = os.path.join(base, "sessions", source + ".md")
-        if os.path.islink(source_path):
-            return [f"{kind} sources must be local factual files, not symbolic links"]
-        source_fm, source_body = split_fm(read(os.path.join(base, "sessions", source + ".md")))
-        if (fm_get(source_fm, "record-kind") != "factual-evidence"
-                or fm_get(source_fm, "id") != source or not source_body.strip()
-                or record_findings(source_fm, base)):
-            return [f"{kind} sources must reference persisted valid factual records"]
+        key = (os.path.abspath(base), source)
+        if key not in cache:
+            cache[key] = factual_source_validation(source, base)
+        error, identities = cache[key]
+        if error:
+            return [f"{kind} {error}"]
+        validated.append(identities)
     if fm_get(fm, "type") != "session":
         return [f"{kind} type must be session"]
     session_id = fm_get(fm, "session-id")
@@ -158,21 +168,65 @@ def record_findings(fm, base):
         return [f"{kind} requires a non-empty stable session-id"]
     if kind == "session-presentation" and fm_get(fm, "provenance") != "captured_signals":
         return ["session-presentation requires captured_signals provenance"]
-    for source in sources:
-        try:
-            records = factual_records(read(os.path.join(base, "sessions", source + ".md")))
-        except ValueError:
-            return [f"{kind} source contains malformed factual data; repair the source before retrying"]
-        if not any(record_session_id(record) == session_id for record in records):
+    for identities in validated:
+        if session_id not in identities:
             return [f"{kind} sources must contain the matching session-id"]
     return []
 
 
+def factual_source_validation(source, base):
+    path = os.path.join(base, "sessions", source + ".md")
+    if os.path.islink(path):
+        return "sources must be local factual files, not symbolic links", frozenset()
+    text = read(path)
+    fm, body = split_fm(text)
+    if (fm_get(fm, "record-kind") != "factual-evidence" or fm_get(fm, "id") != source
+            or not body.strip() or record_findings(fm, base)):
+        return "sources must reference persisted valid factual records", frozenset()
+    try:
+        regular_file(path, publication_temporaries=True)
+        records = factual_records(text)
+        return "", frozenset(record_session_id(record) for record in records)
+    except ValueError:
+        return "source contains malformed factual data; repair the source before retrying", frozenset()
+
+
 def record_session_id(record):
+    if not isinstance(record, dict):
+        raise ValueError("Factual session identity requires an object record")
     values = [record[key] for key in ("session_id", "sessionID") if record.get(key) is not None]
     if any(not isinstance(value, str) for value in values) or len(set(values)) > 1:
         raise ValueError("Conflicting or invalid factual session identity")
-    return values[0] if values else ""
+    identity = values[0] if values else ""
+    if "identity" in record:
+        parse_identity(identity)
+        if canonical_identity(record["identity"]) != identity:
+            raise ValueError("Factual identity metadata does not match session identity")
+    if "event_id" in record:
+        if ("identity" not in record or not isinstance(record["event_id"], str)
+                or not record["event_id"].strip()):
+            raise ValueError("Portable event requires original identity and stable event_id")
+    return identity
+
+
+def record_identity_key(record):
+    """Only original identity metadata can qualify a historical identifier."""
+    return ("qualified" if "identity" in record else "legacy", record_session_id(record))
+
+
+def require_unambiguous_identity(record):
+    kind, identity = record_identity_key(record)
+    if kind == "legacy" and identity.startswith("chronicle:"):
+        raise AmbiguousIdentity("Ambiguous reserved-prefix legacy identity; preserve bytes and require an explicit additive mapping")
+    return identity
+
+
+def qualified_source_identities(source, base):
+    error, _ = factual_source_validation(source, base)
+    if error:
+        raise ValueError(error)
+    records = factual_records((Path(base) / "sessions" / (source + ".md")).read_text(encoding="utf-8"))
+    return {identity for record in records for kind, identity in [record_identity_key(record)] if kind == "qualified"}
 
 
 def factual_records(text):
@@ -198,6 +252,12 @@ def semantic_write_findings(path, proposed, existing, identity, base):
     fm, body = split_fm(proposed)
     old_fm, old_body = split_fm(existing)
     findings = record_findings(fm, base)
+    if isinstance(identity, str) and identity.startswith("chronicle:"):
+        try:
+            if any(identity not in qualified_source_identities(source, base) for source in source_ids(fm)):
+                findings.append("qualified semantic-summary requires metadata-qualified source identity")
+        except ValueError:
+            findings.append("qualified semantic-summary requires valid factual sources")
     if not isinstance(identity, str) or not identity.strip() or fm_get(fm, "session-id") != identity:
         findings.append("semantic-summary session-id must equal the non-empty trusted SDK sessionID")
     if fm_get(fm, "id") != Path(path).stem:
@@ -225,44 +285,53 @@ def semantic_write_findings(path, proposed, existing, identity, base):
 
 
 def block(msg):
-    sys.stderr.write("session-memory note-lint: " + msg + "\n")
-    sys.exit(2)
+    raise ValueError(msg)
 
 
-def main():
-    raw = sys.stdin.read()
-    data = json.loads(raw) if raw.strip() else {}
-    if data.get("tool_name") not in ("Write", "Edit"):
-        return
-    path = (data.get("tool_input") or {}).get("file_path") or ""
-    if not path:
-        return
-    proj = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
-    kind = classify(path, resolve_base(proj))
+def validate_change(proj, identity, arguments):
+    """Validate a neutral replace/edit snapshot; callers own the actual write."""
+    path = arguments["path"]
+    path = os.path.abspath(os.path.join(proj, path))
+    base = resolve_base(proj)
+    lexical_kind = next((folder for folder in ("sessions", "topics", ".drafts", "pending", "continuations")
+                         if Path(path).is_relative_to(Path(base) / folder)), None)
+    if lexical_kind and (not Path(path).resolve().is_relative_to(Path(proj).resolve())
+                         or Path(path).is_symlink()):
+        block("memory note target must be a local file inside the project, not a symbolic link")
+    kind = classify(path, base)
+    if kind == "protected":
+        block("drafts, pending evidence and continuation records are writer-owned")
     if not kind:
         return  # not a memory note
 
-    event = data.get("hook_event_name", "")
+    phase = arguments.get("phase", "pre")
 
-    if event == "PreToolUse":
-        inp = data.get("tool_input") or {}
-        content = (inp.get("content") or "") + "\n" + (inp.get("new_string") or "")
-        existing = read(path)
-        old_string = inp.get("old_string") or ""
-        new_string = inp.get("new_string") or ""
+    if phase == "pre":
+        content = (arguments.get("content") or "") + "\n" + (arguments.get("new_text") or "")
+        existing = Path(path).read_text(encoding="utf-8") if Path(path).exists() else None
+        old_string = arguments.get("old_text") or ""
+        new_string = arguments.get("new_text") or ""
         if existing is not None and old_string:
             content += "\n" + existing.replace(old_string, new_string)
-        proposed = inp.get("content", "") if data["tool_name"] == "Write" else (
-            (existing or "").replace(old_string, new_string, -1 if inp.get("replace_all") else 1)
+        proposed = arguments.get("content", "") if arguments["kind"] == "replace" else (
+            (existing or "").replace(old_string, new_string, -1 if arguments.get("replace_all") else 1)
             if old_string else existing or "")
         proposed_fm, _ = split_fm(proposed)
         existing_fm, _ = split_fm(existing)
+        topic_fields, _ = parse_note(proposed)
+        old_topic_fields, _ = parse_note(existing or "")
+        if kind == "topic" and "note-kind" in old_topic_fields and "note-kind" not in topic_fields:
+            block("typed topic cannot drop note-kind to bypass structural validation")
+        if kind == "topic" and "note-kind" in topic_fields:
+            findings = proposed_topic_findings(path, proposed, resolve_base(proj), proj)
+            if findings:
+                block("; ".join(item["code"] + ": " + item["message"] for item in findings))
         if fm_get(existing_fm, "record-kind") == "semantic-summary":
             if (fm_get(proposed_fm, "record-kind") != "semantic-summary"
                     or fm_get(existing_fm, "session-id") != fm_get(proposed_fm, "session-id")):
                 block("semantic-summary session-id and record-kind are immutable; restore the original identity")
         if fm_get(proposed_fm, "record-kind") == "semantic-summary":
-            findings = semantic_write_findings(path, proposed, existing, data.get("sessionID"), resolve_base(proj))
+            findings = semantic_write_findings(path, proposed, existing, identity, resolve_base(proj))
             if findings:
                 block("; ".join(findings))
         if fm_get(proposed_fm, "record-kind") == "factual-evidence":
@@ -287,10 +356,8 @@ def main():
                       % os.path.basename(path))
         return  # allow
 
-    if event == "PostToolUse":
-        text = read(path)
-        if text is None:
-            return
+    if phase == "post":
+        text = Path(path).read_text(encoding="utf-8")
         fm, body = split_fm(text)
         if fm is None:
             block("'%s' has no YAML frontmatter. Memory notes require a '---' fenced block." % os.path.basename(path))
@@ -307,6 +374,10 @@ def main():
             if fm_get(fm, "record-kind") in ("semantic-summary", "session-presentation") and fm_get(fm, "id") != os.path.splitext(os.path.basename(path))[0]:
                 missing.append("id must match the session view filename")
         else:  # topic
+            topic_fields, _ = parse_note(text)
+            if "note-kind" in topic_fields:
+                missing.extend(item["message"] for item in proposed_topic_findings(
+                    path, text, resolve_base(proj), proj))
             for k in ("id", "type", "title"):
                 if not fm_get(fm, k):
                     missing.append(k)
@@ -331,12 +402,30 @@ def main():
         return
 
 
+def main():
+    data = json.load(sys.stdin)
+    if data.get("tool_name") not in ("Write", "Edit"):
+        return
+    inp = data.get("tool_input") or {}
+    if not inp.get("file_path"):
+        return
+    project = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
+    phase = {"PreToolUse": "pre", "PostToolUse": "post"}.get(data.get("hook_event_name"))
+    if phase:
+        validate_change(project, data.get("sessionID"), {
+            "kind": "replace" if data["tool_name"] == "Write" else "edit", "path": inp["file_path"],
+            "phase": phase, "content": inp.get("content", ""), "old_text": inp.get("old_string", ""),
+            "new_text": inp.get("new_string", ""), "replace_all": inp.get("replace_all", False)})
+
+
 if __name__ == "__main__":
     try:
         main()
     except SystemExit:
         raise
     except ValueError as error:
-        block(str(error))
+        print("session-memory note-lint: " + str(error), file=sys.stderr)
+        sys.exit(2)
     except Exception:
-        sys.exit(0)  # never block real work on our own errors
+        print("session-memory note-lint: validator failed; mutation cannot be approved", file=sys.stderr)
+        sys.exit(2)

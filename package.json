@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-session-chronicle",
-  "version": "0.1.0",
-  "description": "OpenCode plugin for chronological project memory: passive signal capture, BM25 retrieval injection, append-only journal guard with secret redaction, compaction handoff, and memory_* recall tools.",
+  "name": "session-chronicle",
+  "version": "0.2.0",
+  "description": "Portable four-harness chronological memory adapter with neutral evidence capture, bounded BM25 retrieval, guarded writes, recovery, and recall tools.",
   "type": "module",
   "main": "./index.ts",
   "exports": {
@@ -10,9 +10,14 @@
   },
   "files": [
     "index.ts",
+    "adapters",
+    "schemas",
+    "core",
     "scripts",
     "skill",
+    "skills",
     "command",
+    "plugin.yaml",
     "README.md"
   ],
   "keywords": [
@@ -24,13 +29,20 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@opencode-ai/plugin": "^1.18.4"
+    "@opencode/plugin": "2.0.26"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
+    "@earendil-works/pi-coding-agent": "1.2.0",
+    "effect": "4.0.0-rc.112",
+    "typebox": "1.3.27",
     "typescript": "^5.6.0"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   }
 }

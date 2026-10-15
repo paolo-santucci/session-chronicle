@@ -1,0 +1,178 @@
+schema-version: 2
+last-updated: "2026-10-15T22:05:25+02:00"
+active-plan: null
+last-plan: null
+
+short-plan:
+  feature: null
+  slug: null
+  auto: false
+  request-type: null
+  workflow: null
+  parent:
+    spec: null
+    plan: null
+    milestone: null
+    frs: null
+  paths:
+    spec: null
+    plan: null
+    assess-dir: null
+  phases:
+    brainstorm: pending
+    assess: pending
+    triage: pending
+    spec: pending
+    plan: pending
+    build: pending
+  approvals:
+    spec: null
+    plan: null
+  rejection-note: null
+  build-progress:
+    current-wave: null
+    waves-completed: []
+
+long-plan:
+  feature: null
+  slug: null
+  auto: false
+  request-type: null
+  paths:
+    spec: null
+    plan: null
+    assess-dir: null
+  phases:
+    brainstorm: pending
+    assess: pending
+    spec: pending
+    plan: pending
+  approvals:
+    spec: null
+
+pending-consolidation: []
+
+recently-completed: []
+
+in-progress:
+  - title: "Atomic topics and V2 baseline"
+    state: "Uncommitted baseline preserved in the portable implementation; 119 memory regression tests pass."
+    touched:
+      - "skill/session-chronicle-refactor/SKILL.md"
+      - "skill/session-chronicle-refactor/references/report-template.md"
+      - "command/session-chronicle-refactor.md"
+      - "skill/session-chronicle/SKILL.md"
+      - "skill/session-chronicle/references/atomic-topic-contract.md"
+      - "skill/session-chronicle/references/zettelkasten-method.md"
+      - "skill/session-chronicle/references/atomicity-examples.md"
+      - "skill/session-chronicle/references/topic-note-template.md"
+      - "skill/session-chronicle/references/topic-structure-template.md"
+      - "skill/session-chronicle/references/topic-redirect-template.md"
+      - "skill/session-chronicle-bootstrap/SKILL.md"
+      - "skill/session-chronicle/scripts/_topic_graph.py"
+      - "skill/session-chronicle/scripts/_session_notes.py"
+      - "skill/session-chronicle/scripts/_memory_read.py"
+      - "skill/session-chronicle/scripts/topic-maintenance.py"
+      - "skill/session-chronicle/scripts/topic-patch-lint.py"
+      - "skill/session-chronicle/scripts/test_topic_graph.py"
+      - "skill/session-chronicle/scripts/test_topic_patch.py"
+      - "skill/session-chronicle/scripts/test_topic_review.py"
+      - "skill/session-chronicle/scripts/memory-audit.py"
+      - "skill/session-chronicle/scripts/backlinks.py"
+      - "skill/session-chronicle/scripts/slugify.py"
+      - "skill/session-chronicle/scripts/memory-recall.sh"
+      - "skill/session-chronicle/scripts/topic-index.sh"
+      - "skill/session-chronicle/scripts/retrieve-inject.py"
+      - "skill/session-chronicle/scripts/note-lint.py"
+      - "skill/session-chronicle/scripts/capture-signals.py"
+      - "index.ts"
+      - "index.test.ts"
+      - "scripts/install-local.sh"
+      - "tests/test_install_local.py"
+      - "README.md"
+    next-step: "Run live refactor dry-run after authorized installation."
+    blocker: null
+  - title: "Portable Chronicle"
+    state: "Repository, directory and package renamed session-chronicle. Staged snapshot: 325 tests pass; commit/push pending."
+    touched:
+      - "docs/portability-plan.md"
+      - "docs/capability-matrix.md"
+      - "docs/uat-integration-request.md"
+      - "docs/verification.md"
+      - "docs/package-consumption.md"
+      - "docs/runtime-contracts.md"
+      - "docs/legacy-data.md"
+      - "plugin.yaml"
+      - "adapters/"
+      - "schemas/"
+      - "skills/"
+      - "scripts/build-package.py"
+      - "tests/"
+      - "skill/session-chronicle/scripts/_portable.py"
+      - "skill/session-chronicle/scripts/_identity.py"
+      - "skill/session-chronicle/scripts/_capture.py"
+      - "skill/session-chronicle/scripts/_guards.py"
+      - "skill/session-chronicle/scripts/_storage_paths.py"
+      - "skill/session-chronicle/scripts/chronicle.py"
+      - "index.ts"
+      - "index.test.ts"
+      - "package.json"
+      - "bun.lock"
+      - "README.md"
+      - "scripts/install-local.sh"
+      - "tsconfig.json"
+      - "skill/session-chronicle/scripts/_checkpoint.py"
+      - "skill/session-chronicle/scripts/_docsroot.py"
+      - "skill/session-chronicle/scripts/_session_notes.py"
+      - "skill/session-chronicle/scripts/session-context.py"
+      - "skill/session-chronicle/scripts/test_session_context.py"
+      - "skill/session-chronicle/scripts/checkpoint.py"
+      - "skill/session-chronicle/scripts/capture-signals.py"
+      - "skill/session-chronicle/scripts/test_checkpoint.py"
+      - "skill/session-chronicle/scripts/test_memory_contracts.py"
+      - "skill/session-chronicle/scripts/test_write_boundaries.py"
+      - "skill/session-chronicle/scripts/retrieve-inject.py"
+      - "skill/session-chronicle/scripts/topic-index.sh"
+      - "skill/session-chronicle/scripts/note-lint.py"
+      - "skill/session-chronicle/SKILL.md"
+      - "skill/session-chronicle/references/session-note-template.md"
+      - "command/session-chronicle.md"
+      - ".opencode/plugins/session-chronicle.ts"
+    next-step: "Resolve docs/uat-integration-request.md and native provenance gates."
+    blocker: "Native parity and operational qualification blocked."
+  - title: "Pending pre-existing bundle and cleanup"
+    state: "Bootstrap, root duplicate deletions, and hooks-settings deletion remain excluded by user."
+    touched:
+      - "skill/session-chronicle-bootstrap/"
+      - "command/session-chronicle-bootstrap.md"
+      - "scripts/"
+      - "skill/session-chronicle/references/hooks.settings.json"
+    next-step: "Review separately when requested."
+    blocker: null
+
+next-steps:
+  - "Authorize installation separately, then verify compatible native runtimes and interactive/headless workflows."
+  - "Verify successful UAT sync/removal/rollback; current tests establish expected refusal and preservation."
+  - "Define trusted native continuation entrypoints and generated maintenance-helper ownership mappings."
+
+known-issues:
+  - severity: critical
+    description: "UAT capability/tool/composition contracts and native prompt/actor provenance block four-harness operation. Claude/Codex native memory-tool transport is unresolved."
+    impact: high
+    workaround: "Keep required capabilities unsupported where missing; see docs/capability-matrix.md and docs/uat-integration-request.md."
+  - severity: warning
+    description: "Two legacy topic notes need semantic refactoring; read-only validation reports missing note kinds and body/link metadata mismatches."
+    impact: medium
+    workaround: "After installing the updated bundle, run /session-chronicle-refactor --dry-run, then apply."
+  - severity: warning
+    description: "The deployed project shim remains stale by request; only repository source was corrected."
+    impact: medium
+    workaround: "Reinstall from corrected source when deployment is authorized."
+  - severity: warning
+    description: "Durability requires cooperating local POSIX writers. Malformed pending data blocks publication and needs operator repair."
+    impact: medium
+    workaround: "Preserve pending batches; inspect reported failures before retrying. See README recovery limits."
+  - severity: warning
+    description: "Custom agents' explicit skill allowlists omit chronicle skills; invocation may require an authorized configuration change."
+    impact: medium
+    workaround: "Obtain authorization for any necessary skill-allowlist change."

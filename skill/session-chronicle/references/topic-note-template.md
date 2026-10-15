@@ -1,27 +1,27 @@
 ---
-# Canonical TOPIC note — atomic evergreen concept (Zettelkasten permanent note).
+# Canonical ATOMIC topic note. Read atomic-topic-contract.md before authoring.
 # Filename: ${docs-root}/topics/<canonical-slug>.md   (stem == id == slug)
-# UPSERT semantics: if it exists, UPDATE it (bump `updated`); never create a duplicate concept.
-# NOTE: topic-note materialisation is DEFERRED to session-chronicle v1.1.0 (M2).
-#       This template is the locked schema; note-lint.py already validates it.
-#
-# Required fields (enforced by note-lint.py PostToolUse): id, type, title, and CONCRETE
-# provenance. Provenance is MANDATORY: with `provenance: derived_from_*` you MUST also
-# populate `sources:` (non-empty); only `provenance: stated_by_user` may leave `sources` empty.
+# Refine the same idea; split different ideas. Keep dates unchanged on a no-op.
+# Typed notes require concrete existing sources, even for a user-stated idea.
+# Structure/redirect shapes are in topic-structure-template.md / topic-redirect-template.md.
 id: canonical-slug                  # equals filename stem; English kebab-case
 type: topic
-title: "Human title of the concept"
+note-kind: atomic
+title: "One specific claim, concept, argument or mechanism"
 aliases: []                         # alternative slugs → anti-duplicate enforcement
 tags: []                            # English kebab tags
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
-provenance: derived_from_sessions   # derived_from_sessions | stated_by_user | derived_from_plan
-sources: []                         # provenance paths (plans/specs/sessions). MANDATORY (or `provenance:`)
-status: active                      # active | superseded | merged
+provenance: derived_from_sessions
+sources: []                         # non-empty existing project-relative source paths; optional #section
+status: active
 supersedes: []                      # [<slug>] if this replaces another note
-links: []                           # [[slug]] associative edges to other topics
+links: []                           # slugs matching contextual body [[slug]] links, excluding code examples
 ---
 
-<!-- CURRENT distilled understanding of the concept. NOT a log: the history is reconstructed
-     from the backlinks in sessions/ (grep for [[slug]]). Keep atomic and terse. -->
-…
+<!-- Replace this guidance with one coherent idea; never publish the placeholders.
+Open with the central claim. Explain its scope, rationale and necessary qualifications.
+Cite the supporting source/section beside the claim using an ordinary Markdown link.
+Add contextual [[slug]] connections explaining why each related idea matters.
+Split independently reusable ideas; keep indispensable context with this one.
+Length is a review signal, not a correctness test. -->

@@ -11,7 +11,7 @@ from _session_notes import note_lint, summary_findings
 
 
 def validate_mutable_note(path, base):
-    if path.is_symlink() or not note_lint.classify(path, base):
+    if path.is_symlink() or note_lint.classify(path, base) not in ("session", "topic"):
         raise ValueError("Expected a local session or topic note inside docs-root")
     text = path.read_text(encoding="utf-8")
     fm, _ = note_lint.split_fm(text)
@@ -19,6 +19,8 @@ def validate_mutable_note(path, base):
     if kind in ("factual-evidence", "session-presentation") or note_lint.fm_get(fm, "status") == "closed":
         raise ValueError("Closed, factual-evidence and generated presentation notes are immutable")
     if kind == "semantic-summary":
+        if note_lint.fm_get(fm, "session-id").startswith("chronicle:"):
+            raise ValueError("Portable semantic summaries require trusted context and the guarded semantic writer")
         findings = summary_findings(path, base)
         findings += note_lint.semantic_write_findings(
             path, text, text, note_lint.fm_get(fm, "session-id"), base)

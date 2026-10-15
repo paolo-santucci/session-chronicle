@@ -15,13 +15,17 @@ SESSION_CHRONICLE_CAPTURE_PROMPTS and SESSION_CHRONICLE_CAPTURE_BASH independent
 disable future channel capture when set to 0, false, no, or off. Existing data
 is retained. Redaction is heuristic, not a confidentiality guarantee.
 
+Writes use atomic full-file replacement under the shared writer lock. A malformed
+existing buffer blocks capture unchanged: preserve the original and repair it
+explicitly before retrying; this wrapper never truncates or repairs evidence.
 stdlib only; failures exit non-zero so the adapter can report capture loss.
 """
 import sys, os, json, re, hashlib, datetime, shlex
 from pathlib import Path
 
 from _docsroot import resolve_base
-from _checkpoint import writer_lock, redact, sync_directory
+from _checkpoint import append_record, validated_draft, writer_lock, redact, sync_directory
+from _capture import is_maintenance_command
 
 NOISE_RE = re.compile(r"^\s*(ls|cat|pwd|echo|cd)\b")
 
@@ -65,31 +69,6 @@ def last_hash(draft):
         return ""
 
 
-def is_maintenance_command(command, cwd):
-    if "\n" in command:
-        return False
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return False
-    while tokens and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0], re.S):
-        tokens.pop(0)
-    if not tokens:
-        return False
-    if os.path.basename(tokens[0]) in ("python", "python3", "bash"):
-        tokens = tokens[1:]
-    if not tokens or any(re.fullmatch(r"[;&|<>()]+", token) for token in tokens):
-        return False
-    script = Path(cwd, tokens[0]).resolve()
-    return script.parent == Path(__file__).resolve().parent and script.name in {
-        "checkpoint.py", "capture-signals.py", "note-lint.py", "sync-topics-field.py",
-        "topic-index.sh", "retrieve-inject.py", "memory-recall.sh", "memory-audit.py",
-        "backlinks.py", "slugify.py", "_docsroot.py", "session-context.py", "_session_notes.py",
-    }
-
-
 def main():
     raw = sys.stdin.read()
     data = json.loads(raw) if raw.strip() else {}
@@ -120,22 +99,22 @@ def main():
     sig["eventID"] = data.get("eventID")
     with writer_lock(base) as draft_dir:
         draft = draft_dir / (datetime.date.today().isoformat() + ".draft.jsonl")
+        _, records = validated_draft(draft)
         h = hashlib.sha256(json.dumps(sig, sort_keys=True).encode()).hexdigest()
-        if h == last_hash(draft):
+        if records and h == records[-1].get("_h"):
+            with draft.open("rb") as source:
+                os.fsync(source.fileno())
+            sync_directory(draft_dir)
             return
         sig["_h"] = h
         sig["ts"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
-        with draft.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(sig, ensure_ascii=False) + "\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        sync_directory(draft_dir)
+        append_record(draft, sig)
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as error:
-        print(f"session-chronicle: capture failed ({type(error).__name__})", file=sys.stderr)
+        print(f"session-chronicle: capture failed ({type(error).__name__}); preserve buffers and inspect/repair before retrying", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)

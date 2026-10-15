@@ -56,8 +56,15 @@ def validated_base(proj, declared):
         raise ValueError("docs-root must be a project-relative path without parent traversal")
     base = project / relative
     if any(not path.resolve().is_relative_to(project) for path in
-           (base, base / ".drafts", base / ".drafts" / "pending", base / "sessions", base / "topics")):
+           (base, base / ".drafts", base / ".drafts" / "pending", base / "sessions", base / "topics",
+            base / "pending", base / "continuations")):
         raise ValueError("docs-root and memory directories must resolve inside the project")
+    managed = [project / name for name in (".opencode", ".claude", ".codex", ".pi", ".agents")]
+    memory = (base, base / ".drafts", base / ".drafts" / "pending", base / "sessions", base / "topics",
+              base / "pending", base / "continuations")
+    if any(path.resolve().is_relative_to(config.resolve()) or config.resolve().is_relative_to(path.resolve())
+           for path in memory for config in managed):
+        raise ValueError("docs-root must not overlap managed harness configuration")
     return str(base)
 
 

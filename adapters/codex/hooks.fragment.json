@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event SessionStart", "timeout": 30}]}],
+    "PreToolUse": [{"matcher": "^apply_patch$", "hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event PreToolUse", "timeout": 30}]}],
+    "PostToolUse": [{"matcher": "^(apply_patch|Bash)$", "hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event PostToolUse", "timeout": 30}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event UserPromptSubmit", "timeout": 30}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event Stop", "timeout": 30}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event PreCompact", "timeout": 30}]}],
+    "Interrupt": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event Interrupt", "timeout": 3}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 '/ABSOLUTE/PACKAGE_ROOT/adapters/codex/hook.py' --event SessionEnd", "timeout": 3}]}]
+  }
+}

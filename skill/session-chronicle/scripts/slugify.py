@@ -12,7 +12,9 @@ On --resolve, the MATCH TYPE is written to stderr as `match: exact|alias|stem|ne
 caller can require human confirmation before UPSERTing on a `stem` match (which is a
 heuristic and may be a false positive).
 """
-import sys, os, re, glob, unicodedata
+import sys, re, unicodedata
+
+from _topic_graph import TopicGraph
 
 
 def slugify(s):
@@ -38,31 +40,6 @@ def stem(slug):
     return slug
 
 
-def _read(p):
-    try:
-        with open(p, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except Exception:
-        return ""
-
-
-def _fm(text):
-    m = re.match(r"^---\s*\n(.*?)\n---", text or "", re.S)
-    return m.group(1) if m else ""
-
-
-def aliases(text):
-    fm = _fm(text)
-    out = []
-    m = re.search(r"^aliases:\s*\[(.*?)\]", fm, re.M)
-    if m:
-        out += [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
-    m2 = re.search(r"^aliases:\s*\n((?:\s*-\s+.*\n?)+)", fm, re.M)
-    if m2:
-        out += [re.sub(r"^\s*-\s+", "", ln).strip().strip("'\"") for ln in m2.group(1).splitlines() if ln.strip()]
-    return [a for a in out if a]
-
-
 def resolve(title, base):
     """Return (slug, how) where how in {exact, alias, stem, new}.
 
@@ -71,19 +48,16 @@ def resolve(title, base):
     over stem (a file is scanned for all three before stem can win across files).
     """
     cand = slugify(title)
-    cstem = stem(cand)
-    stem_hit = None
-    for f in glob.glob(os.path.join(base, "topics", "*.md")):
-        existing = os.path.splitext(os.path.basename(f))[0]
-        alias_slugs = [slugify(a) for a in aliases(_read(f))]
-        if cand == existing:
-            return existing, "exact"
-        if cand in alias_slugs:
-            return existing, "alias"
-        if stem_hit is None and any(stem(n) == cstem for n in [existing] + alias_slugs):
-            stem_hit = existing
-    if stem_hit:
-        return stem_hit, "stem"
+    graph = TopicGraph(base, include_evidence=False)
+    graph.require_resolvable()
+    canonical = graph.resolve(cand)
+    if cand in graph.names:
+        return canonical, "exact" if cand == canonical else "alias"
+    matches = {graph.resolve(name) for name in graph.names if stem(name) == stem(cand)}
+    if len(matches) > 1:
+        raise ValueError("Ambiguous stem match: " + ", ".join(sorted(matches)))
+    if matches:
+        return matches.pop(), "stem"
     return cand, "new"
 
 
@@ -99,4 +73,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except (ValueError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(2)

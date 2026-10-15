@@ -2,6 +2,8 @@
 import importlib.util
 from pathlib import Path
 
+from _topic_graph import read_frontmatter
+
 
 spec = importlib.util.spec_from_file_location("note_lint", Path(__file__).with_name("note-lint.py"))
 note_lint = importlib.util.module_from_spec(spec)
@@ -12,9 +14,9 @@ def load_note(path):
     return note_lint.split_fm(Path(path).read_text(encoding="utf-8"))
 
 
-def summary_findings(path, base):
+def summary_findings(path, base, source_cache=None):
     fm, body = load_note(path)
-    findings = note_lint.record_findings(fm, base)
+    findings = note_lint.record_findings(fm, base, source_cache)
     if note_lint.fm_get(fm, "id") != Path(path).stem:
         findings.append("session view id must match its filename")
     if any(not note_lint.fm_get(fm, key) for key in ("id", "date", "title", "session-id")):
@@ -25,7 +27,14 @@ def summary_findings(path, base):
 
 
 def preferred_paths(paths, base, include_evidence=False):
-    notes = [(path, load_note(path)[0]) for path in paths]
+    # Each selection has a fresh validation snapshot; never trust a cache across calls.
+    source_cache = {}
+    notes = []
+    for path in paths:
+        try:
+            notes.append((path, read_frontmatter(path)))
+        except (OSError, UnicodeError, ValueError):
+            continue
     summaries = {}
     presentations = {}
     for path, fm in notes:
@@ -36,7 +45,7 @@ def preferred_paths(paths, base, include_evidence=False):
             identity = note_lint.fm_get(fm, "session-id")
             presentations.setdefault(identity, []).append(path)
     preferred = {identity: matches[0] for identity, matches in summaries.items()
-                 if identity and len(matches) == 1 and not summary_findings(matches[0], base)}
+                 if identity and len(matches) == 1 and not summary_findings(matches[0], base, source_cache)}
     selected = []
     for path, fm in notes:
         kind = note_lint.fm_get(fm, "record-kind")
@@ -48,16 +57,16 @@ def preferred_paths(paths, base, include_evidence=False):
         if kind == "session-presentation":
             if identity in preferred or len(presentations[identity]) != 1:
                 continue
-            if summary_findings(path, base):
+            if summary_findings(path, base, source_cache):
                 continue
         selected.append(path)
     return selected
 
 
-def print_recent_sessions(base):
-    paths = sorted((Path(base) / "sessions").glob("*.md"))
-    paths = preferred_paths(paths, base)
-    entries = [(path, load_note(path)[0]) for path in paths]
+def print_recent_sessions(base, paths=None):
+    if paths is None:
+        paths = preferred_paths(sorted((Path(base) / "sessions").glob("*.md")), base)
+    entries = [(path, read_frontmatter(path)) for path in paths]
     entries.sort(key=lambda entry: (note_lint.fm_get(entry[1], "started")
                  or note_lint.fm_get(entry[1], "date") or entry[0].name[:10], entry[0].name), reverse=True)
     for path, fm in entries[:8]:

@@ -28,10 +28,12 @@ Tunables (env): MEMORY_INJECT_BUDGET_CHARS (default 6000), MEMORY_INJECT_TOPK
 Explicit callers can set include_factual: true in the input JSON.
 """
 import sys, os, json, re, glob
+from pathlib import Path
 from collections import Counter
 
 from _docsroot import resolve_base
 from _session_notes import preferred_paths
+from _topic_graph import active_topic, parse_fields, read_frontmatter
 
 BUDGET = int(os.environ.get("MEMORY_INJECT_BUDGET_CHARS", "6000"))
 TOP_K = int(os.environ.get("MEMORY_INJECT_TOPK", "3"))
@@ -71,11 +73,7 @@ quei nel nella alla dal sul agli delle ed anche se ma piu cosa quando dove perch
 
 
 def read(path):
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except Exception:
-        return ""
+    return Path(path).read_text(encoding="utf-8")
 
 
 def split_fm(text):
@@ -86,23 +84,10 @@ def split_fm(text):
 
 
 def fm_get(fm, key):
-    m = re.search(r"^%s:\s*(.*)$" % re.escape(key), fm or "", re.M)
-    return m.group(1).strip().strip("'\"") if m else ""
-
-
-def is_factual(path):
-    frontmatter = []
-    try:
-        with open(path, encoding="utf-8", errors="replace") as source:
-            if source.readline().strip() != "---":
-                return False
-            for line in source:
-                if line.strip() == "---":
-                    break
-                frontmatter.append(line)
-    except OSError:
-        return False
-    return fm_get("".join(frontmatter), "record-kind") == "factual-evidence"
+    value = parse_fields(fm or "").get(key, "")
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return " ".join(value)
+    return value if isinstance(value, str) else ""
 
 
 def toks(s):
@@ -125,21 +110,24 @@ def bm25(query_tokens, doc_counter, doc_len, avg_dl, k1=1.5, b=0.75):
     return score
 
 
-def main():
-    raw = sys.stdin.read()
-    data = json.loads(raw) if raw.strip() else {}
-    prompt = (data.get("prompt") or "").strip()
+def retrieve(proj, prompt, include_evidence=False):
+    prompt = prompt.strip()
     if not prompt:
         return
 
-    proj = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
     base = resolve_base(proj)
 
     files = glob.glob(os.path.join(base, "sessions", "*.md")) + glob.glob(os.path.join(base, "topics", "*.md"))
     if not files:
         return
     files.sort(key=mtime, reverse=True)
-    files = preferred_paths(files, base, data.get("include_factual") is True or data.get("includeEvidence") is True)
+    for path in files:
+        if Path(path).is_symlink() or not Path(path).resolve().is_relative_to(Path(base).resolve()):
+            raise ValueError("Retrieved memory must be local to docs-root")
+        read_frontmatter(path)  # A read failure is not an empty search.
+    files = preferred_paths(files, base, include_evidence)
+    files = [path for path in files if "/topics/" not in path.replace("\\", "/")
+             or active_topic(parse_fields(read_frontmatter(path)))]
 
     qset = set(toks(prompt))
     if not qset:
@@ -169,7 +157,8 @@ def main():
     scored = []
     for f, fm, body, bc, dlen in docs:
         score = bm25(qset, bc, dlen, avg_dl)                   # body relevance
-        score += TYPE_BOOST.get(fm_get(fm, "type"), 1) * len(qset & set(bc))  # note-kind boost
+        boost = 2 if fm_get(fm, "note-kind") == "structure" else TYPE_BOOST.get(fm_get(fm, "type"), 1)
+        score += boost * len(qset & set(bc))  # structure maps remain lighter than atomic claims
         score += 3 * len(qset & set(toks(fm_get(fm, "title"))))  # title boost
         slug = os.path.splitext(os.path.basename(f))[0]
         score += 3 * len(qset & set(toks(slug + " " + fm_get(fm, "topics"))))  # slug/topics boost
@@ -196,11 +185,22 @@ def main():
         used += len(block)
 
     if out:
-        sys.stdout.write(
+        return (
             "## Project memory — auto-retrieved for this prompt (read-only)\n"
-            "_Relevant prior sessions/topics. To recall a subject's full history, grep sessions/ for its [[slug]]._\n\n"
+            "_Relevant prior sessions/topics. Use memory_recall / memory-recall.sh <slug> for graph-aware "
+            "topic links, alias/redirect resolution and supporting source sessions._\n\n"
             + "\n\n".join(out) + "\n"
         )
+
+
+def main():
+    raw = sys.stdin.read()
+    data = json.loads(raw) if raw.strip() else {}
+    project = os.environ.get("PROJECT_ROOT") or data.get("cwd") or os.getcwd()
+    result = retrieve(project, data.get("prompt") or "",
+                      data.get("include_factual") is True or data.get("includeEvidence") is True)
+    if result:
+        sys.stdout.write(result)
 
 
 if __name__ == "__main__":

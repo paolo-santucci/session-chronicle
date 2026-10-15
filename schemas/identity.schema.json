@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:chronicle:identity:v1",
+  "title": "Chronicle original native identity",
+  "description": "Canonical key: chronicle:v1:<harness>:<URL-safe base64 of UTF-8 session_id, no padding>. Only a record's matching original identity object qualifies its identifier. Bare historical IDs remain legacy even if their text matches the canonical namespace. Ambiguous reserved-prefix legacy records block new attribution/grouping pending an explicit additive mapping; their bytes are never migrated implicitly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "harness", "session_id"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "harness": {"enum": ["opencode", "claude-code", "codex", "pi"]},
+    "session_id": {"type": "string", "minLength": 1, "pattern": "\\S", "not": {"pattern": "\u0000"}}
+  }
+}
