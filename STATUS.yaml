@@ -1,5 +1,5 @@
 schema-version: 2
-last-updated: "2026-10-15T22:05:25+02:00"
+last-updated: "2026-10-15T22:06:00+02:00"
 active-plan: null
 last-plan: null
 
@@ -52,11 +52,13 @@ long-plan:
 
 pending-consolidation: []
 
-recently-completed: []
+recently-completed:
+  - date: "2026-10-15"
+    summary: "Committed portable session-chronicle 0.2.0, four adapters, neutral workflows and repository/package rename; 325 tests pass."
 
 in-progress:
   - title: "Atomic topics and V2 baseline"
-    state: "Uncommitted baseline preserved in the portable implementation; 119 memory regression tests pass."
+    state: "Baseline integrated into committed portable implementation; 119 memory regression tests pass."
     touched:
       - "skill/session-chronicle-refactor/SKILL.md"
       - "skill/session-chronicle-refactor/references/report-template.md"
@@ -93,7 +95,7 @@ in-progress:
     next-step: "Run live refactor dry-run after authorized installation."
     blocker: null
   - title: "Portable Chronicle"
-    state: "Repository, directory and package renamed session-chronicle. Staged snapshot: 325 tests pass; commit/push pending."
+    state: "0.2.0 committed; repository, directory and package use session-chronicle. Isolated snapshot: 325 tests pass."
     touched:
       - "docs/portability-plan.md"
       - "docs/capability-matrix.md"
