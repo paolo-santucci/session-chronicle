@@ -5,6 +5,7 @@ import os
 import sys
 
 from _docsroot import resolve_base, orphan_warning
+from _memory_markers import INDEX_HEADING
 from _topic_graph import TopicGraph, active_topic
 
 
@@ -26,7 +27,7 @@ def recall(graph, slug, mode):
 
 def topic_index(graph):
     from _session_notes import print_recent_sessions
-    print("## Project memory index (auto, read-only)")
+    print(INDEX_HEADING)
     topics = [(slug, note) for slug, note in sorted(graph.topics.items()) if active_topic(note["fields"])]
     limit = max(0, int(os.environ.get("MEMORY_INDEX_MAX_TOPICS", "40")))
     print(f"### Topics ({len(topics)} active; {max(0, len(topics) - limit)} omitted)")

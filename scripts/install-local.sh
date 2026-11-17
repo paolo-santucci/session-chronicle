@@ -211,3 +211,8 @@ for i in "${!DESTS[@]}"; do
   if ! mv "${SOURCES[i]}" "$dest"; then die "could not install $dest; attempting rollback"; fi
 done
 info "done: standalone module, OpenCode shim, legacy skills, and commands installed"
+if [ "$GLOBAL" -eq 1 ]; then
+  info "verify from any project: python3 -B $SKILLS_DIR/session-chronicle/scripts/chronicle-doctor.py"
+else
+  info "verify: python3 -B .opencode/skills/session-chronicle/scripts/chronicle-doctor.py --project $TARGET"
+fi

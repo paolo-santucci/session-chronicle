@@ -8,7 +8,7 @@
   "required": ["schema_version", "operation", "context", "arguments"],
   "properties": {
     "schema_version": {"const": 1},
-    "operation": {"enum": ["capture", "checkpoint", "context", "find", "recall", "backlinks", "audit", "index", "guard", "continuation", "recover"]},
+    "operation": {"enum": ["capture", "checkpoint", "context", "find", "recall", "backlinks", "audit", "index", "guard", "continuation", "recover", "retrieve"]},
     "context": {"type": "object"},
     "arguments": {"type": "object"}
   },
@@ -48,6 +48,14 @@
         "from": {"$ref": "identity.schema.json"},
         "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}--evidence-[a-f0-9]{32}$"}},
         "reason": {"$ref": "#/$defs/text"}
+      }
+    }}}},
+    {"if": {"properties": {"operation": {"const": "retrieve"}}}, "then": {"properties": {"arguments": {
+      "type": "object", "additionalProperties": false, "required": ["query"],
+      "properties": {
+        "query": {"$ref": "#/$defs/text"},
+        "exclude": {"type": "array", "maxItems": 200, "uniqueItems": true,
+                    "items": {"type": "string", "pattern": "^(?:session|topic):[a-z0-9][a-z0-9-]{0,190}$"}}
       }
     }}}}
   ],

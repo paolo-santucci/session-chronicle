@@ -156,6 +156,45 @@ The plugin also exposes `memory_find`, `memory_recall`, `memory_backlinks` and `
 
 Child sessions are skipped — only the top-level session journals.
 
+### Read operations
+
+The adapter reaches the shared core through the worker protocol. Two read
+operations matter here:
+
+| Operation | Arguments | Reply |
+|---|---|---|
+| `retrieve` | `query`, `exclude` | `{text, slugs}` |
+| `find` | `query`, `includeEvidence` | the ranked block as text |
+
+`retrieve` is the operation the prompt path calls, once per prompt. Its `text`
+is the rendered block, empty when nothing matched, and its `slugs` list holds
+one note reference per emitted block. A reference is written `kind:stem` —
+`session:2026-11-16--demo--abc123`, `topic:retrieval-integrity` — so a topic
+and a session that share a stem remain different references.
+
+Every emitted block carries one provenance line, `sources: <n> · updated <YYYY-MM-DD>`,
+where `<n>` is the number of entries in the note's source list and the date is its
+validated `updated` field. A note without a valid source list renders `sources: none`,
+and no source identifier or path is ever rendered.
+
+`MEMORY_INJECT_BUDGET_CHARS` (default 6000 characters) is spent in one place
+only — the renderer, which counts the preamble, the heading, every header line,
+every provenance line, the separators and the truncation marker. Nothing
+downstream re-cuts note text.
+
+`exclude` carries the references the adapter has already injected in this
+session. The core subtracts them inside ranking, so a note already seen is
+replaced by the next candidate rather than shortening the result. The OpenCode
+adapter is the one that keeps that per-session state today; the Claude Code and
+Codex prompt hooks still call `find` and keep no state, so they do not
+suppress a repeated note yet.
+
+When the worker does not know `retrieve` — an older worker answers
+`invalid_request` — or the call fails with a protocol, timeout or unavailable
+error, the adapter falls back to one `find` call for that prompt and records no
+slugs. The block is still injected; only the dedup history for that prompt is
+lost.
+
 ### Maintenance scripts (on demand / periodically — M4)
 
 Deterministic, read-mostly; the LLM only writes prose. Invoked by Step 5 and by audits.

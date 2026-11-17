@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "session-chronicle",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Portable four-harness chronological memory adapter with neutral evidence capture, bounded BM25 retrieval, guarded writes, recovery, and recall tools.",
   "type": "module",
   "main": "./index.ts",

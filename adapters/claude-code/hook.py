@@ -10,7 +10,7 @@ import sys
 
 
 HARNESS = "claude-code"
-DIAGNOSTIC_OPERATIONS = ("index", "find", "recall", "backlinks", "audit")
+DIAGNOSTIC_OPERATIONS = ("index", "find", "recall", "backlinks", "audit", "retrieve")
 TOOL_OPERATIONS = {"Write": "files.write", "Edit": "files.edit", "Bash": "process.exec"}
 
 
@@ -218,7 +218,8 @@ def diagnostic_request(payload, operation, arguments):
     # A fixture is not runtime authentication: diagnostics never mutate identity/state.
     context["role"] = "unknown"
     allowed = {"index": set(), "find": {"query", "includeEvidence"},
-               "recall": {"slug", "scope"}, "backlinks": {"slug"}, "audit": {"mode"}}
+               "recall": {"slug", "scope"}, "backlinks": {"slug"}, "audit": {"mode"},
+               "retrieve": {"query", "exclude"}}
     if operation not in allowed:
         raise Blocked("native_context_transport_required")
     if not isinstance(arguments, dict) or set(arguments) - allowed[operation]:

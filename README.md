@@ -2,14 +2,15 @@
 
 Independently owned project memory for **OpenCode, Claude Code, Codex CLI and Pi**.
 The repository, npm package and portable plugin share the name `session-chronicle`,
-version **0.2.0**.
+version **0.2.1**.
 
 **This is an implementation with explicit integration gates, not four-harness
-operational certification.** UAT can inspect package artifacts, but its current
-external-plugin capability handling, custom-tool policy and hook composition block
-full activation. No portable bundle has been deployed or published during this work.
+operational certification.** UAT can inspect package artifacts and compose Codex
+hooks, but custom-tool policy and native provenance still block complete activation.
+No portable bundle has been deployed or published during this work.
 
 - [Workflow/capability matrix](docs/capability-matrix.md)
+- [Comparison with mainstream memory plugins](docs/competitive-comparison.md)
 - [Architecture and milestones](docs/portability-plan.md)
 - [Package consumption](docs/package-consumption.md)
 - [Exact verification evidence](docs/verification.md)
@@ -22,7 +23,7 @@ and distilled topic notes under `<docs-root>/topics/`, written for later retriev
 Its shared workflows cover:
 
 - **Passive capture** — meaningful tool activity (file writes/edits, non-trivial bash, user prompts) is mirrored into a draft buffer, at zero token cost.
-- **Retrieval injection** — on every user prompt, the top-k relevant session/topic bodies are BM25-ranked and appended to the submitted prompt text. Retrieval and the session-start index prefer a semantic summary over its presentation for the same `session-id`; deduplication and factual-evidence exclusion happen before the retrieval candidate budget.
+- **Retrieval injection** — on every user prompt, the top-k relevant session/topic bodies are BM25-ranked and appended to the submitted prompt text. Retrieval and the session-start index prefer a semantic summary over its presentation for the same `session-id`; the core applies deduplication and factual-evidence exclusion before the retrieval candidate budget. The block format, the budget authority and the per-session repeat suppression are described under [Retrieval injection](#retrieval-injection).
 - **Write-path guard** — supported direct native mutations are checked for closed history, provenance and secret-like patterns. This does not protect arbitrary shell or external filesystem writes.
 - **Factual checkpoints** — captured evidence is persisted without an LLM through supported lifecycle hooks and recovery. Optional explicit `session-chronicle` enrichment adds a separate semantic summary. See each adapter's activation gates.
 - **Explicit memory tools** — `memory_find`, `memory_recall`, `memory_backlinks`, `memory_audit`, `memory_session_context`.
@@ -46,9 +47,9 @@ continuously running orchestration service.
 - Target-specific native APIs and actual permissions; see the adapter READMEs and capability matrix.
 - Bun and TypeScript for development; UAT's own pinned Python environment for real package integration tests.
 
-Reference targets are OpenCode 2.0.26, Claude Code 2.1.299, Codex CLI 0.162.1 and
-Pi 1.2.0. Installed probes found OpenCode 2.0.29 and Claude 2.1.220, with Codex/Pi
-absent. These are separate facts, not a tested compatibility range. See
+Reference targets are OpenCode 2.0.26, Claude Code 2.1.299, Codex CLI 0.163.0 and
+Pi 1.2.0. Chronicle has not run the installed Codex runtime or changed Ansel. These
+are separate facts, not a tested compatibility range. See
 `docs/verification.md` for static/fixture results and remaining native checks.
 
 ## Package and activation
@@ -106,13 +107,91 @@ The `CLAUDE.md` fallback is this plugin's path-resolution behavior, not OpenCode
 >
 > Silence means the resolution is sound.
 
+## Retrieval injection
+
+On every user prompt the adapter asks the shared core for one retrieval block and
+appends it to the prompt text. The core ranks the project's topic and session
+notes against the prompt; the block is deterministic, no model takes part in it,
+and the read path writes nothing.
+
+Each injected note is rendered as a header and a provenance line. The line has
+one shape, `sources: <n> · updated <YYYY-MM-DD>`, and carries a count and a date
+and nothing else — no source identifier, no path:
+
+```text
+### [topic] Retrieval integrity (retrieval-integrity)
+sources: 3 · updated 2026-11-16
+```
+
+A note without a valid `sources` list renders `sources: none`; a note without a
+valid `updated` date renders the count alone.
+
+**The single budget authority.** `MEMORY_INJECT_BUDGET_CHARS` (default 6000
+characters, roughly 1500 tokens) is spent in one place. The renderer counts the
+preamble, the heading, every header line, every provenance line, the
+separators, the truncation marker and the untrusted envelope, and nothing
+downstream re-cuts note text. A body too long for the remaining budget is cut
+at a paragraph boundary, then at a line boundary, and only then mid-line, and
+the cut is marked `…(truncated)`. A block that cannot fit whole is dropped
+rather than split.
+
+**Per-session repeat suppression.** The OpenCode adapter remembers which notes
+it has already injected in the current session and passes them as the `exclude`
+argument of the next retrieval call. The core applies the exclusion inside
+ranking, so a note suppressed earlier in the session is replaced by the next
+candidate instead of shortening the result. The reply carries `{text, slugs}`:
+`text` is the block, empty when nothing matched, and `slugs` lists one
+`kind:stem` reference per emitted note — `session:2026-11-16--demo--abc123` or
+`topic:retrieval-integrity`. A note that was filtered, excluded or dropped is
+never reported. A compaction clears the session's history, so the next prompt
+may inject the same note again; that reset is intended. The Claude Code and
+Codex prompt hooks still call `find` and keep no per-session state, so they do
+not suppress a repeated note yet; the exclusion contract itself lives in the
+core, which every adapter can use.
+
+**Shape of the block.** `MEMORY_INJECT_TOPK` (default 3) caps the notes in one
+block, `MEMORY_INJECT_BUDGET_CHARS` caps its size, and `MEMORY_INJECT_MAX_SCAN`
+(default 60) caps how many candidate notes are read per prompt. Topic notes
+take the first scan slots, so a growing session journal cannot retire them.
+
+**Health expectations.** The doctor reports `HEALTHY` when the plugin entry
+exists, the module is installed, the configured `docs-root` is present and no
+sealed batch is waiting for publication. Unpublished drafts are a warning, not
+a failure. A project with no notes yet is healthy and empty: retrieval returns
+an empty block and the prompt is left unchanged. Without `--strict` the doctor
+always exits 0, whatever the verdict. With `--strict` the exit code carries the
+verdict: 1 means degraded, 2 that the plugin is not loaded and 3 an invalid
+`docs-root`. There is no fourth code.
+
+## Health check
+
+`chronicle-doctor.py` answers, in one read-only command, the four questions that
+otherwise need five greps: is the plugin installed and actually loaded, what is in
+the store, will topics still be retrieved, and is anything stuck.
+
+```bash
+python3 -B .opencode/skills/session-chronicle/scripts/chronicle-doctor.py --project .
+```
+
+It reports the installed version, whether an OpenCode plugin entry exists, record
+counts by kind, the retrieval window (topics take the first scan slots, sessions
+fill the remainder), the age of the newest note, unpublished drafts and sealed
+batches, and structural audit findings. `--json` for scripting, `--strict` to exit
+non-zero on any non-healthy verdict, `--no-audit` to skip the topic audit.
+
+A project can look installed and still capture nothing: the module and the installer
+marker are not what OpenCode loads. Without a plugin entry under
+`.opencode/plugins/`, the doctor reports `not loaded` — and, under `--strict`,
+exits with code 2. This is the fastest way to detect a project that has silently
+gone dormant.
+
 ## Native adapters
 
 | Adapter | Native surface | Integration boundary |
 |---|---|---|
 | `adapters/opencode/` | V2 session/tool hooks and five registered memory tools | Trusted session location/parent; original prompt provenance and UAT tool policy require qualification |
 | `adapters/claude-code/` | Native command-hook translation | Per-event fields and build gates; UAT hook composition and custom-tool discovery remain explicit dependencies |
-| `adapters/codex/` | Native command-hook translation | Missing actor/success provenance cannot become journal evidence; trusted memory-tool invocation needs a supported transport |
+| `adapters/codex/` | UAT-composed native command-hook translation for 0.163.0 | Missing primary actor provenance cannot become journal evidence; trusted memory-tool invocation needs a supported transport |
 | `adapters/pi/` | Native extension/tool registration | Read tools use session manager/cwd; unknown role and missing stable prompt IDs block capture/enrichment |
 
 Adapters normalize operations before calling the shared core. No adapter may use
@@ -145,7 +224,7 @@ that gate. A rendered skill is not proof that its required tool is available.
 |---|---|---|
 | `MEMORY_INJECT_BUDGET_CHARS` | `6000` | retrieval injection budget (~1500 tokens) |
 | `MEMORY_INJECT_TOPK` | `3` | max notes injected per prompt |
-| `MEMORY_INJECT_MAX_SCAN` | `60` | newest-first eligible candidate cap; automatic retrieval excludes factual records before counting. File discovery/header classification are not bounded by this cap. |
+| `MEMORY_INJECT_MAX_SCAN` | `60` | newest-first eligible candidate cap; automatic retrieval excludes factual records before counting. Topic notes take the first slots of this budget, so they cannot be crowded out by newer sessions; total body reads stay bounded by the cap. |
 | `SESSION_CHRONICLE_CAPTURE_PROMPTS` | `1` | set to `0`, `false`, `no`, or `off` to disable future prompt capture independently |
 | `SESSION_CHRONICLE_CAPTURE_BASH` | `1` | set to `0`, `false`, `no`, or `off` to disable future Bash command capture independently |
 | `MEMORY_HEALTH_STALE_MAX` / `MEMORY_HEALTH_DANGLING_MAX` | `5` / `10` | thresholds for the index health line |

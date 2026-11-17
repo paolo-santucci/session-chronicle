@@ -34,17 +34,124 @@ def load_module(name, path):
 
 scanner = load_module("neutral_history_scanner", SCANNER)
 UAT_ROOT = Path(os.environ.get("UAT_ROOT", ROOT.parent / "universal-agentic-toolkit"))
-if UAT_ROOT.is_dir():
-    sys.path.insert(0, str(UAT_ROOT))
-try:
-    from uat.adapters.common import Artifacts, BASELINES
-    from uat.definitions import read_definition
-except ModuleNotFoundError as error:
-    if error.name not in {"uat", "yaml", "jsonschema"}:
-        raise
-    UAT_AVAILABLE = False
-else:
-    UAT_AVAILABLE = True
+OPTIONAL_IMPORTS = frozenset({"uat", "yaml", "jsonschema"})
+
+
+def optional_module(name, optional=OPTIONAL_IMPORTS):
+    """Import ``name``, returning ``None`` when an optional dependency is absent.
+
+    Declared-optional dependencies degrade to ``None`` so the module still
+    imports; anything else re-raises, because a genuinely missing non-optional
+    module must fail loudly rather than be swallowed. A named helper (instead of
+    an inline ``try`` at module scope) keeps that negative half directly
+    testable: OQ-29.
+
+    The comparison is on the *root* package: a dotted import such as
+    ``uat.adapters.common`` reports the whole dotted name in ``error.name``, so a
+    partially present UAT checkout must degrade the same way an absent one does
+    instead of collapsing every packaging test into one collection error
+    (FR-39, EC-36).
+    """
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError as error:
+        root = (error.name or "").split(".")[0]
+        if root not in optional:
+            raise
+        return None
+
+
+# A probe on the expected file keeps collection independent of sys.path: a
+# missing checkout leaves every test collectable and cleanly skipped, while a
+# missing *non-optional* module still raises (FR-39, EC-36).
+UAT_AVAILABLE = (UAT_ROOT / "uat/adapters/common.py").is_file()
+Artifacts = BASELINES = read_definition = None
+if UAT_AVAILABLE:
+    if str(UAT_ROOT) not in sys.path:
+        sys.path.insert(0, str(UAT_ROOT))
+    uat_common = optional_module("uat.adapters.common")
+    uat_definitions = optional_module("uat.definitions")
+    if uat_common is not None and uat_definitions is not None:
+        Artifacts, BASELINES = uat_common.Artifacts, uat_common.BASELINES
+        read_definition = uat_definitions.read_definition
+    else:
+        UAT_AVAILABLE = False
+
+
+COLLECTION_PROBE = """
+import json
+import unittest
+
+loader = unittest.TestLoader()
+
+
+def flatten(suite):
+    for entry in suite:
+        if isinstance(entry, unittest.TestSuite):
+            yield from flatten(entry)
+        else:
+            yield entry
+
+
+ids = [test.id() for test in flatten(loader.discover(".", pattern="test_neutral_workflows.py"))]
+module = __import__("test_neutral_workflows")
+print(json.dumps({
+    "ids": ids,
+    "collapsed": [name for name in ids if "_FailedTest" in name],
+    "uat_available": bool(module.UAT_AVAILABLE),
+    "bindings_absent": (module.Artifacts, module.BASELINES, module.read_definition) == (None, None, None),
+}))
+"""
+
+FAKE_UAT_COMMON = '''
+BASELINES = {"opencode": "2026-01-01"}
+
+
+class Artifacts:
+    """Inert stand-in: proves the gate opens, never a harness selection."""
+
+    def __init__(self, payload, version):
+        self.payload = payload
+        self.version = version
+        self.skill_root = "fixture/skills"
+
+    def bind(self, text):
+        return text.replace("{{path:skills}}", self.skill_root)
+'''
+
+FAKE_UAT_DEFINITIONS = '''
+class Definition:
+    """Inert stand-in mirroring the real reader's observable attributes."""
+
+    def __init__(self, path):
+        self.id = path.parent.name
+        self.body = path.read_text()
+        self.resources = [path]
+        self.metadata = {
+            "invocation": "explicit",
+            "requires": {
+                "plugins": ["session-chronicle"],
+                "skills": [] if self.id == "session-chronicle" else ["session-chronicle"],
+            },
+        }
+
+    def as_record(self):
+        return {"id": self.id, "metadata": self.metadata}
+
+
+def read_definition(path, _parent):
+    return Definition(path)
+'''
+
+
+def stage_fake_uat_checkout(root):
+    """Create a minimal ``uat`` package so the existence gate can open."""
+    for package in (root / "uat", root / "uat/adapters"):
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+    (root / "uat/adapters/common.py").write_text(FAKE_UAT_COMMON, encoding="utf-8")
+    (root / "uat/definitions.py").write_text(FAKE_UAT_DEFINITIONS, encoding="utf-8")
+    return root
 
 
 class NeutralResourcesTests(unittest.TestCase):
@@ -262,6 +369,103 @@ class HistoryScannerTests(unittest.TestCase):
         with self.git_results(shallow="true"), contextlib.redirect_stdout(output):
             code = scanner.main(["--project", str(self.project), "--core-dir", str(CORE)])
         self.assertEqual((code, json.loads(output.getvalue())["complete"]), (2, False))
+
+
+UAT_PROBE = "uat/adapters/common.py"
+PACKAGING_CLASSES = (NeutralResourcesTests, HistoryScannerTests)
+PACKAGING_CLASS_NAMES = tuple(f"test_neutral_workflows.{case.__name__}" for case in PACKAGING_CLASSES)
+PACKAGING_TEST_IDS = tuple(
+    f"test_neutral_workflows.{case.__name__}.{name}"
+    for case in PACKAGING_CLASSES
+    for name in unittest.TestLoader().getTestCaseNames(case)
+)
+PACKAGING_COUNT = 17
+
+
+class OptionalModuleHelperTests(unittest.TestCase):
+    """The declared-optional import helper is named and directly callable (OQ-29)."""
+
+    def test_returns_none_when_a_declared_optional_dependency_is_absent(self):
+        absent = "chronicle_absent_optional_probe"
+        self.assertIsNone(optional_module(absent, optional=frozenset({absent})))
+
+    def test_returns_the_module_when_the_import_succeeds(self):
+        self.assertIs(optional_module("json"), json)
+
+    def test_reraises_when_a_genuinely_missing_module_is_not_declared_optional(self):
+        with self.assertRaises(ModuleNotFoundError):
+            optional_module("chronicle_absent_required_probe")
+
+    def test_reraises_a_synthetic_error_whose_name_is_not_declared_optional(self):
+        synthetic = ModuleNotFoundError("No module named 'yamlx'", name="yamlx")
+        with patch.object(importlib, "import_module", side_effect=synthetic), \
+                self.assertRaises(ModuleNotFoundError) as raised:
+            optional_module("yaml")
+        self.assertEqual(raised.exception.name, "yamlx")
+
+    def test_a_dotted_optional_import_degrades_on_its_root_package(self):
+        # FR-39/EC-36: the dotted name is what the import machinery reports, so the
+        # gate has to look at the root package or a partial UAT checkout re-collapses
+        # the seventeen packaging tests into one collection error.
+        dotted = ModuleNotFoundError("No module named 'uat.adapters.common'",
+                                     name="uat.adapters.common")
+        with patch.object(importlib, "import_module", side_effect=dotted):
+            self.assertIsNone(optional_module("uat.adapters.common"))
+
+    def test_a_dotted_import_of_a_missing_optional_root_degrades(self):
+        absent = "chronicle_absent_optional_probe"
+        self.assertIsNone(optional_module(absent + ".submodule",
+                                          optional=frozenset({absent})))
+
+
+class OptionalUatGateTests(unittest.TestCase):
+    """Packaging tests must collect individually whether or not ``uat`` exists.
+
+    A module-scope ``ModuleNotFoundError`` collapses every test into one
+    ``_FailedTest``; the fixture checkout below keeps the outcome independent of
+    the developer's neighbouring UAT tree.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="chronicle-uat-gate-", dir=TEMP_ROOT)
+        self.addCleanup(temporary.cleanup)
+        self.fixture = Path(temporary.name)
+
+    def run_packaging_tests(self, uat_root):
+        return subprocess.run(
+            [sys.executable, "-B", "-m", "unittest", "-v", *PACKAGING_CLASS_NAMES],
+            cwd=ROOT / "tests", env={**os.environ, "UAT_ROOT": str(uat_root)},
+            text=True, capture_output=True, timeout=60)
+
+    def test_the_packaging_classes_hold_seventeen_named_tests(self):
+        self.assertEqual(len(PACKAGING_TEST_IDS), PACKAGING_COUNT)
+
+    def test_packaging_tests_collect_individually_when_uat_is_absent(self):
+        self.assertFalse((self.fixture / UAT_PROBE).is_file())
+        probe = subprocess.run(
+            [sys.executable, "-B", "-c", COLLECTION_PROBE],
+            cwd=ROOT / "tests", env={**os.environ, "UAT_ROOT": str(self.fixture)},
+            text=True, capture_output=True, timeout=60)
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+        collected = json.loads(probe.stdout)
+        self.assertFalse(collected["uat_available"])
+        self.assertTrue(collected["bindings_absent"])
+        self.assertEqual(collected["collapsed"], [])
+        self.assertEqual(sorted(set(PACKAGING_TEST_IDS) - set(collected["ids"])), [])
+
+    def test_packaging_tests_skip_cleanly_when_uat_is_absent(self):
+        completed = self.run_packaging_tests(self.fixture)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn(f"Ran {PACKAGING_COUNT} tests", completed.stderr)
+        self.assertIn("OK (skipped=1)", completed.stderr)
+
+    def test_packaging_tests_execute_when_uat_is_present(self):
+        stage_fake_uat_checkout(self.fixture)
+        completed = self.run_packaging_tests(self.fixture)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn(f"Ran {PACKAGING_COUNT} tests", completed.stderr)
+        self.assertIn("\nOK\n", completed.stderr)
+        self.assertNotIn("_FailedTest", completed.stderr)
 
 
 if __name__ == "__main__":

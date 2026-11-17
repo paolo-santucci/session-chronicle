@@ -8,7 +8,8 @@ import unittest
 from unittest.mock import patch
 
 import _checkpoint as store
-from _topic_graph import TopicGraph
+import _topic_graph as topic_graph
+from _topic_graph import TopicGraph, note_ref, valid_slug
 
 SCRIPTS = Path(__file__).parent
 
@@ -326,6 +327,44 @@ class TopicGraphTests(unittest.TestCase):
         self.assertTrue(capture.is_maintenance_command(f'python3 "{script}" inventory --project .', self.project))
         self.assertFalse(capture.is_maintenance_command("python3 topic-maintenance.py inventory --project .", self.project))
         self.assertFalse(capture.is_maintenance_command(f'python3 "{script}" inventory --project . && other', self.project))
+
+
+class NoteReferenceTests(unittest.TestCase):
+    """FR-26: a note reference is kind-prefixed, and never a path."""
+
+    def test_note_ref_accepts_kind_prefixed_stems(self):
+        for value in ("session:2026-10-15--demo--abc123", "topic:octopus", "topic:a",
+                      "session:0", "session:" + "a" * 191):
+            with self.subTest(value=value):
+                self.assertTrue(note_ref(value))
+
+    def test_note_ref_rejects_paths_uppercase_nul_overlong_and_non_strings(self):
+        values = ["session/", "session:", "session:../x", "x/y", "session:UPPER", "session:" + "a" * 192,
+                  "session:a\x00b", "session:a<b", "", None, ["session:a"],
+                  "octopus", "topic:octopus/", "topic:/octopus", "session:a b", "session:a\n",
+                  "topics:octopus", "session:octopus:topic", 17, b"session:a", {}]
+        for value in values:
+            with self.subTest(value=value):
+                self.assertFalse(note_ref(value))
+
+    def test_valid_slug_and_note_ref_accept_disjoint_values(self):
+        self.assertTrue(valid_slug("octopus"))
+        self.assertFalse(note_ref("octopus"))
+        self.assertFalse(valid_slug("2026-10-15--demo--abc123"))
+        self.assertTrue(note_ref("session:2026-10-15--demo--abc123"))
+
+    def test_neither_predicate_routes_through_the_other(self):
+        def raising(*args, **kwargs):
+            raise AssertionError("note_ref and valid_slug must not delegate to each other (FR-26)")
+
+        with patch.object(topic_graph, "valid_slug", raising):
+            self.assertTrue(topic_graph.note_ref("session:2026-10-15--demo--abc123"))
+            self.assertTrue(topic_graph.note_ref("topic:octopus"))
+            self.assertFalse(topic_graph.note_ref("octopus"))
+            self.assertFalse(topic_graph.note_ref("x/y"))
+        with patch.object(topic_graph, "note_ref", raising):
+            self.assertTrue(topic_graph.valid_slug("octopus"))
+            self.assertFalse(topic_graph.valid_slug("session:octopus"))
 
 
 if __name__ == "__main__":

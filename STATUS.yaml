@@ -1,7 +1,7 @@
 schema-version: 2
-last-updated: "2026-10-15T22:11:00+02:00"
+last-updated: "2026-11-17T19:26:00+01:00"
 active-plan: null
-last-plan: null
+last-plan: "docs/plans/archive/sp-20261116-retrieval-integrity-performance-plan.md"
 
 short-plan:
   feature: null
@@ -52,11 +52,7 @@ long-plan:
 
 pending-consolidation: []
 
-recently-completed:
-  - date: "2026-10-15"
-    summary: "Committed the legacy bootstrap bundle and removed duplicate root scripts and obsolete hook settings; 325 tests and lint/typecheck pass."
-  - date: "2026-10-15"
-    summary: "Committed portable session-chronicle 0.2.0, four adapters, neutral workflows and repository/package rename; 325 tests pass."
+recently-completed: []
 
 in-progress:
   - title: "Atomic topics and V2 baseline"
@@ -97,72 +93,59 @@ in-progress:
     next-step: "Run live refactor dry-run after authorized installation."
     blocker: null
   - title: "Portable Chronicle"
-    state: "0.2.0 committed; repository, directory and package use session-chronicle. Isolated snapshot: 325 tests pass."
+    state: "0.2.1 Codex package implemented locally with eight UAT-composed hooks; 327 tests pass."
     touched:
-      - "docs/portability-plan.md"
+      - "README.md"
+      - "adapters/codex/README.md"
+      - "adapters/codex/hook.py"
       - "docs/capability-matrix.md"
-      - "docs/uat-integration-request.md"
-      - "docs/verification.md"
       - "docs/package-consumption.md"
       - "docs/runtime-contracts.md"
-      - "docs/legacy-data.md"
-      - "plugin.yaml"
-      - "adapters/"
-      - "schemas/"
-      - "skills/"
-      - "scripts/build-package.py"
-      - "tests/"
-      - "skill/session-chronicle/scripts/_portable.py"
-      - "skill/session-chronicle/scripts/_identity.py"
-      - "skill/session-chronicle/scripts/_capture.py"
-      - "skill/session-chronicle/scripts/_guards.py"
-      - "skill/session-chronicle/scripts/_storage_paths.py"
-      - "skill/session-chronicle/scripts/chronicle.py"
-      - "index.ts"
-      - "index.test.ts"
+      - "docs/uat-integration-request.md"
+      - "docs/verification.md"
       - "package.json"
-      - "bun.lock"
-      - "README.md"
-      - "scripts/install-local.sh"
-      - "tsconfig.json"
-      - "skill/session-chronicle/scripts/_checkpoint.py"
-      - "skill/session-chronicle/scripts/_docsroot.py"
-      - "skill/session-chronicle/scripts/_session_notes.py"
-      - "skill/session-chronicle/scripts/session-context.py"
-      - "skill/session-chronicle/scripts/test_session_context.py"
-      - "skill/session-chronicle/scripts/checkpoint.py"
-      - "skill/session-chronicle/scripts/capture-signals.py"
-      - "skill/session-chronicle/scripts/test_checkpoint.py"
-      - "skill/session-chronicle/scripts/test_memory_contracts.py"
-      - "skill/session-chronicle/scripts/test_write_boundaries.py"
+      - "plugin.yaml"
+      - "scripts/build-package.py"
+      - "tests/test_native_hooks.py"
+      - "tests/test_portable_package.py"
+      - "tests/test_uat_package.py"
+    next-step: "Commit package changes, then qualify exact 0.2.1 artifacts through authorized UAT deployment."
+    blocker: "Capture/session-context remain unsupported; native qualification and UAT memory-operation broker are missing."
+  - title: "Retrieval integrity hardening"
+    state: "Review fixes applied; final gate green at 213 script / 283 repository / 48 adapter. Behavioural: slug validation, body-read skip, identity parser, wire-cap clamp, dispatch order."
+    touched:
+      - "skill/session-chronicle/scripts/_memory_markers.py"
       - "skill/session-chronicle/scripts/retrieve-inject.py"
-      - "skill/session-chronicle/scripts/topic-index.sh"
-      - "skill/session-chronicle/scripts/note-lint.py"
-      - "skill/session-chronicle/SKILL.md"
-      - "skill/session-chronicle/references/session-note-template.md"
-      - "command/session-chronicle.md"
-      - ".opencode/plugins/session-chronicle.ts"
-    next-step: "Resolve docs/uat-integration-request.md and native provenance gates."
-    blocker: "Native parity and operational qualification blocked."
+      - "skill/session-chronicle/scripts/_session_notes.py"
+      - "skill/session-chronicle/scripts/_portable.py"
+      - "skill/session-chronicle/scripts/_capture.py"
+      - "skill/session-chronicle/scripts/capture-signals.py"
+      - "adapters/opencode/index.ts"
+      - "schemas/envelope.schema.json"
+      - "docs/future-evolutions.md"
+      - "docs/verification.md"
+    next-step: "Commit the working tree, then deploy 0.2.1 plus the doctor."
+    blocker: null
 
 next-steps:
-  - "Authorize installation separately, then verify compatible native runtimes and interactive/headless workflows."
-  - "Verify successful UAT sync/removal/rollback; current tests establish expected refusal and preservation."
+  - "Decide whether to reinstall 0.2.1 on opencode-work-tools or archive its 76 records."
   - "Define trusted native continuation entrypoints and generated maintenance-helper ownership mappings."
+  - "Run explicit semantic enrichment on the most active project; no semantic-summary records exist across 224 session records."
+  - "Apply /session-chronicle-refactor --dry-run to the eleven legacy topic notes in perfido-os."
 
 known-issues:
   - severity: critical
-    description: "UAT capability/tool/composition contracts and native prompt/actor provenance block four-harness operation. Claude/Codex native memory-tool transport is unresolved."
+    description: "Codex prompt-event/primary-actor provenance and UAT memory-operation brokering block capture and session context."
     impact: high
-    workaround: "Keep required capabilities unsupported where missing; see docs/capability-matrix.md and docs/uat-integration-request.md."
+    workaround: "Keep both required capabilities unsupported; qualify only retrieval/protected-history exact artifacts."
   - severity: warning
     description: "Two legacy topic notes need semantic refactoring; read-only validation reports missing note kinds and body/link metadata mismatches."
     impact: medium
     workaround: "After installing the updated bundle, run /session-chronicle-refactor --dry-run, then apply."
   - severity: warning
-    description: "The deployed project shim remains stale by request; only repository source was corrected."
+    description: "Deployment drift across consuming projects: opencode-work-tools still runs 0.1.0 with no installer marker or plugin shim, so capture stopped on 2026-10-24; this repository's own deployed shim also remains stale by request."
     impact: medium
-    workaround: "Reinstall from corrected source when deployment is authorized."
+    workaround: "Reinstall 0.2.1 on affected projects from corrected source, or archive their memory explicitly."
   - severity: warning
     description: "Durability requires cooperating local POSIX writers. Malformed pending data blocks publication and needs operator repair."
     impact: medium

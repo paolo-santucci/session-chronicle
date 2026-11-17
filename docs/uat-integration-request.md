@@ -1,17 +1,17 @@
 ---
-date: 2026-10-15
-status: requested-not-implemented-in-toolkit
+date: 2026-10-23
+status: partially-implemented-custom-operation-api-blocked
 ---
 
 # UAT contracts required by Session Chronicle
 
-Reference: UAT `4d3c145f099c6dedad3373ef9fc469936ce9c651`, version 0.1.0.
+Reference: the read-only sibling UAT checkout inspected on 2026-10-23.
 All paths below are relative to that checkout. Chronicle remains independently
 owned. These are toolkit requests, not extra keys invented for `plugin.yaml`.
 UAT's accepted `docs/design.md` describes the desired ownership; its actual loader,
 renderer and policy implementation establish what can work today.
 
-## 1. External adapters must be qualifiable — blocking all targets
+## 1. External adapters must be qualifiable — resolved in UAT
 
 **Code:** `uat/adapters/common.py:245-252`, `uat/packages.py:56-62`,
 `uat/deployment.py:34-46`.
@@ -27,7 +27,7 @@ even exact-fingerprint evidence cannot qualify `unsupported`.
 `unsupported`, and appeared in the compatibility blockers, although its adapter
 declared `unverified`. File copying succeeded independently.
 
-**Request:** distinguish absent implementations from present but unverified package
+**Implemented:** UAT distinguishes absent implementations from present but unverified package
 adapters. Preserve exact-artifact native qualification; no hardcoded Chronicle
 allowlist exception, package self-certification, or omission of requirements.
 
@@ -59,7 +59,7 @@ coverage-unknown. Telemetry receives documented metadata only; it must not recor
 query text, note bodies, journal payloads or arbitrary tool input/output. Missing
 observations are unknown, never zero. Do not alias all custom tools to `process.exec`.
 
-## 3. Native hook/plugin composition — blocking command-hook targets
+## 3. Native hook/plugin composition — resolved for Codex package declarations
 
 **Code:** `uat/adapters/render.py:86-104,122-133`,
 `uat/packages.py:48-53`, `uat/schemas/definition.json:57-63`.
@@ -70,7 +70,7 @@ observations are unknown, never zero. Do not alias all custom tools to `process.
 but never registers the handler. The equivalent `opencode.json` collision was
 reproduced in memory. A file containing `{{harness}}` was copied literally.
 
-**Request:** structured, deterministic contributions with named ownership, ordering,
+**Implemented:** structured, deterministic contributions with named ownership, ordering,
 failure/deny aggregation, activation and removal. Preserve UAT status, statistics
 and policy hooks. Plugin activation prose is not configuration merging.
 
@@ -125,7 +125,7 @@ relocation tests, no sibling checkout paths, acyclic explicit skill selection,
 and separate rendered/installed/activated/qualified statuses. No automatic package
 manager run hidden inside rendering. Do not bundle duplicate runtime instances.
 
-## 6. Persistent memory must not overlap replacement surfaces
+## 6. Persistent memory must not overlap replacement surfaces — resolved in UAT preflight
 
 **Code:** `uat/deployment.py:19-24,122-134,160-186,246-252`.
 
@@ -134,7 +134,7 @@ topics and `.drafts/pending`, then prepare normal replacement. That directory is
 inside UAT's wholesale skill replacement surface. Default `docs/` is outside it,
 but that alone does not prove arbitrary custom roots safe.
 
-**Request:** persistent-root registration/preflight or an equivalent verified
+**Implemented:** persistent-root preflight and transactional/recovery checks provide a verified
 non-overlap check before mutation. Chronicle rejects configuration-overlapping
 roots locally; UAT must not delete existing state before Chronicle can start.
 
@@ -151,3 +151,18 @@ requires exact builds, authorized activation, authentication where needed, posit
 and negative permission probes, and complete UAT statistics evidence. Chronicle
 does not emit duplicate lifecycle statistics or forward journal content to
 `uat.telemetry.record_event`. Required unsupported guarantees keep deployment blocked.
+
+## Current Codex API request
+
+Sections 2 and 4 remain the blocking interface request. The 0.163.0 package needs
+a versioned broker operation carrying trusted harness, native thread and turn,
+workspace, selected principal/policy revision, and primary/delegated/unknown actor
+outside model arguments. It must register the five collision-checked operations,
+validate only their documented model arguments, return `ok`/`denied`/`ask`/`error`
+effect outcomes and authorize `memory_session_context` as a mutation that may
+checkpoint. Telemetry must receive only bounded categorical operation/outcome data.
+
+UAT's short-lived app-server transport supplies a promising immutable
+principal/thread/turn binding but deliberately disables hooks and currently has no
+production broker or Chronicle bridge. Chronicle will consume the eventual public
+contract; it will not add a private metadata field to `plugin.yaml`.

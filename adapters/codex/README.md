@@ -1,48 +1,112 @@
-# Codex command-hook adapter — native qualification blocked
+# Codex command-hook adapter — 0.163.0 implementation
 
-## Evidence and state (2026-10-15)
+## Evidence and state (2026-10-23)
 
-- Installed: **absent**, supplied by the caller; no native Codex session was run.
-- Release reference: **rust-v0.162.1** from the target mastery reference. Live docs are not proof of that release's exact behavior.
-- Activation: **inert**; explicit composition is required. No native configuration or UAT-generated settings are changed.
-- Operational implementation: index orientation, BM25 retrieval, patch preflight and primary-only lifecycle checkpoints use the shared worker. Native capture/custom-tool qualification remains blocked.
+- Baseline: **codex-cli 0.163.0**, upstream tag `rust-v0.163.0`, commit
+  `83086188ae0614bd882818ff1aa23f3194962012`.
+- Chronicle did not install, activate or invoke Codex and did not modify Ansel.
+  UAT's authenticated model and app-server smoke results are external integration
+  evidence, not Chronicle qualification.
+- `plugin.yaml` declares eight artifact-bound `adapters.codex.hooks` contributions.
+  UAT composes them into its settings while preserving native status/statistics
+  groups and emits an owned contribution inventory. The legacy
+  `hooks.fragment.json` remains inert reference material and is not an activation
+  source.
+- `chronicle.retrieval` and `chronicle.protected-history` are implemented but
+  unverified. `chronicle.capture` and `chronicle.session-context` remain explicitly
+  unsupported, so required-capability blockers remain.
 
-Official [Codex hooks documentation](https://developers.openai.com/codex/hooks.md), fetched 2026-10-15: Config shape, Review and trust hooks, Common input/output fields, Tool coverage, event-specific payloads/outputs, and Schemas. Official links also resolve into `learn.chatgpt.com`; linked `main` schemas may exceed release behavior. The registration fragment contains documented fields only.
+## Pinned producer semantics
 
-## Artifacts and explicit composition request
+The following conclusions come from the exact 0.163.0 source, not merely its JSON
+schemas:
 
-- `hook.py`: synchronous, one-shot native command hook and restricted operator diagnostics.
-- `hooks.fragment.json`: hooks-shaped request artifact outside native discovery paths.
-- `README.md`: sources, behavior and remaining gates.
+- [`core/src/hook_runtime.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/hook_runtime.rs)
+  creates prompt hooks from the pending `TurnInput::UserInput` before recording it
+  and before adding hook context. Its native `turn_context.sub_id` is passed as
+  `turn_id`, but the producer processes pending input items individually and does
+  not prove that a turn ID uniquely identifies one prompt event. Chronicle refuses
+  prompt capture and never hashes prompt content into an ID.
+- The same producer calls `run_post_tool_use_hooks` only after a tool has produced
+  a successful output. Chronicle may therefore treat `PostToolUse` as completed;
+  it does not inspect prose or ad-hoc `tool_response` fields for success.
+- `thread_spawn_subagent_hook_context` supplies `agent_id` and `agent_type` only
+  for `SessionSource::SubAgent(SubAgentSource::ThreadSpawn)`. Other sources,
+  including internal/synthetic sessions, produce neither field. Presence proves a
+  delegated thread-spawn actor, but absence does **not** prove a primary actor.
+- `SessionEnd` and `Interrupt` explicitly reject every `SessionSource::SubAgent` in
+  the producer. Those lifecycle events can checkpoint as primary. `Stop`, prompt,
+  tool and compaction hooks retain `unknown` when child fields are absent.
+- [`hooks/src/events/post_tool_use.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/events/post_tool_use.rs)
+  preserves native `tool_use_id`; prompt and tool schemas make `turn_id` required.
+  Schema presence alone was not used as actor or success evidence.
 
-Composition owner: install/qualify an authorized build, replace each command placeholder with a correctly shell-quoted absolute `adapters/codex/hook.py` path, retain fixed `--event`, and compose selected entries into an authorized `hooks.json` beside an active configuration layer (or inline equivalent), preserving other entries. Review/trust the exact native `/hooks` definition. **Do not edit UAT-generated settings to activate this fragment.** Passing fixture tests does not activate or qualify the adapter.
+The adapter uses the original prompt for read-only retrieval but refuses prompt
+capture because event identity and actor attribution remain unproven. Successful
+Bash calls retain native tool IDs and `origin: unknown`, then refuse journal
+mutation because the actor remains unknown. A known child is delegated and also
+excluded. `apply_patch` capture is not collapsed into one invented path.
+Protected-memory patch preflight is separate and still applies to intercepted
+children and unknown actors.
 
-Worker resolution uses only `Path(__file__).resolve().parents[2]`: package `core/chronicle.py`, otherwise source `skill/session-chronicle/scripts/chronicle.py`. Hook cwd, environment, PATH and siblings cannot select another worker. No daemon, MCP server or last-session identity file is created. Native skill entrypoints suffice; no duplicate slash commands are added.
+## Composed handlers
 
-## Behavior and blockers
+| Event | Matcher | Behavior |
+| --- | --- | --- |
+| `SessionStart` | all | Read-only index orientation; unknown actor cannot checkpoint. |
+| `PreToolUse` | `^apply_patch$` | Reconstruct patch proposal and call the shared guard. Explicit denials use native deny output and exit 2. |
+| `PostToolUse` | `^(apply_patch\|Bash)$` | Preserve successful native IDs/status, but do not capture without primary attribution. |
+| `UserPromptSubmit` | all | BM25 retrieval from the original pending input; capture remains blocked on actor attribution. |
+| `Stop`, `PreCompact` | all | Checkpoint only if primary; current absent actor fields remain unknown. |
+| `SessionEnd`, `Interrupt` | all | Root-only checkpoint with a 2-second worker timeout inside UAT's retained 3-second native limit. |
 
-| Event | Behavior |
-| --- | --- |
-| `SessionStart`, including `source: compact` | Unknown actor cannot checkpoint; emit a diagnostic and inject the read-only `index` through documented untrusted `additionalContext`. Fresh sessions need no factual sources. No semantic context/identity is adopted. |
-| `UserPromptSubmit` | Capture remains unavailable without a stable prompt-event ID and origin discriminator. Emit a nonfatal diagnostic, independently call `find` with the prompt and `includeEvidence: false`, and inject untrusted BM25 results. The prompt proceeds. |
-| `PreToolUse` `apply_patch` | `guard` with kind `patch`, `tool_input.command`, phase `pre`. Core allows unrelated work with unknown role; protected memory mutation fails closed. Edit/Write matcher aliases do not alter the canonical payload tool name. |
-| `PostToolUse` | Capture unavailable: this event also follows nonzero command exits and `tool_response` has no proven success schema. Preserve the original result and report a nonfatal diagnostic. Shared patch validation is preflight only. |
-| `Stop`, `PreCompact` | Unknown/delegated actors cannot checkpoint; diagnostic only, no synthetic continuation or stopping normal work. |
-| `SessionEnd`, `Interrupt` | Docs explicitly exclude subagents: primary checkpoint, bounded to 2 seconds inside a 3-second hook budget. Failure retains pending evidence and is advisory. |
-| `PostCompact` | Not registered; documented restoration occurs at SessionStart `source: compact`. |
+All declarations use `python3`, the exact `adapters/codex/hook.py` source key and a
+fixed `--event` argument. Matchers and fixed events are declaration data, not
+shell-generated paths. UAT's Git-root command resolves the deployed artifact;
+there are no absolute sibling paths. Native matching handlers may execute
+concurrently, so declaration order does not establish prompt provenance or guard
+sequencing.
 
-Native `session_id` and absolute `cwd` supply identity/workspace. Known `agent_id` maps children to delegated. **An absent `agent_id` on tool/prompt/start/stop/compaction events does not prove primary**: the official tables do not establish that invariant, and a child can share its parent's session ID. Unknown role is preserved. Model-supplied role/status/origin/model and success-looking tool text cannot fill gaps. `tool_use_id` is checked, `turn_id` is not promoted to a prompt event ID, and IDs are never generated/content-hashed. No transcript parsing is used.
+## Failures and protected-history limits
 
-## Failures
+Malformed or mismatched `PreToolUse` input, worker errors and protected-memory
+rejection emit a nonempty denial reason and exit 2. Codex 0.163.0 itself fails open
+for hook exceptions, timeouts, malformed output and unsupported `ask`; a successful
+sibling cannot override a supported explicit denial, but this is not a complete
+security boundary. `PostToolUse` cannot undo effects. Shell, `write_stdin`, hosted
+tools and unobserved delegation paths need UAT's scoped driver/effect broker rather
+than a broader Chronicle claim.
 
-Fixed `--event` lets malformed/mismatched PreToolUse stdin produce documented denial JSON, stderr and exit 2. Other passive failures use `systemMessage` at exit 0, preserving normal prompt/tool/Stop behavior. No `decision: block`, tool-result replacement or Stop-generated continuation is used for passive logging failures. SessionEnd/Interrupt worker failures return nonzero advisory errors without claiming to prevent shutdown/interruption. Pending evidence is never deleted or blindly retried. Errors contain codes, not raw prompts, transcripts, tool output or tracebacks. No prompt/transcript data is sent to UAT statistics.
+Other passive hook failures return content-free diagnostics without replacing
+native prompt/tool results. Session-end errors are advisory and cannot prevent
+shutdown. Pending evidence is retained. Journal, prompt and tool payloads are never
+forwarded to UAT telemetry.
 
-## Operator diagnostics and native-tool blocker
+## Memory-operation API still required from UAT
 
-`python3 /absolute/package/adapters/codex/hook.py --diagnostic OP --arguments JSON` reads an operator-provided hook fixture on stdin. Allowed operations: `index` (no arguments), `find` (`query`, `includeEvidence`), `recall` (`slug`, `scope`), `backlinks` (`slug`), `audit` (`mode`). Diagnostics force role `unknown` and reject identity arguments. Semantic `context` and the former `--read memory_session_context` mode are unavailable: context may mutate state, and fixture input is not runtime authentication. This CLI is not a model-facing context fallback or native tool discovery.
+Chronicle needs a versioned broker call for each of `memory_find`, `memory_recall`,
+`memory_backlinks`, `memory_audit` and `memory_session_context` with:
 
-MCP tools and MCP hook handlers exist, but no checked contract binds a model-originated memory call to a trusted current session/workspace/actor. Hook templates alone do not establish that transport. Establish and qualify a build-specific per-call contract before implementing custom-tool registration. None is invented here.
+1. trusted thread/turn/workspace and selected principal binding supplied outside
+   model arguments;
+2. primary/delegated/unknown actor classification and operation-specific policy
+   decision;
+3. immutable validated model arguments containing only each operation's documented
+   query/slug/scope/mode fields;
+4. an effect result distinguishing success, denial, unresolved ask and error;
+5. no prompt, query, note, journal or arbitrary tool payload in lifecycle telemetry.
 
-## Verification
+`memory_session_context` has empty model arguments, requires mutation permission,
+may checkpoint and must use the broker's trusted binding. UAT's short-lived
+0.163.0 app-server transport already binds principal/thread/turn for callbacks, but
+it disables native hooks and has no production policy/effect broker or Chronicle
+bridge. Chronicle does not invent a private metadata field or infer identity from
+model input.
 
-`python3 -B -m unittest discover -s tests -p test_native_hooks.py -v` exercises synthetic fixtures, mocked failure boundaries and isolated real-core checks when available. Positive checks cover fresh orientation, prompt retrieval despite capture gaps and unrelated unknown-role writes; negative checks cover protected writes, forged diagnostic identity, unsafe success inference, pending evidence and sibling isolation. Native discovery, installed-runtime behavior and full qualification remain blocked.
+## Verification boundary
+
+`python3 -B -m unittest discover -s tests -p test_native_hooks.py -v` exercises
+translation, unknown/delegated exclusion, read-only retrieval, guarded writes,
+failure behavior and isolated real-core calls. The UAT package suite validates the
+eight declarations, composed inventory, preserved native settings and exact copied
+artifact bytes. Neither suite activates Codex or creates native qualification.

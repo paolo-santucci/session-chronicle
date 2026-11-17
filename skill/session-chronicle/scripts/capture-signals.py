@@ -26,24 +26,22 @@ from pathlib import Path
 from _docsroot import resolve_base
 from _checkpoint import append_record, validated_draft, writer_lock, redact, sync_directory
 from _capture import is_maintenance_command
+from _memory_markers import strip_injected
 
 NOISE_RE = re.compile(r"^\s*(ls|cat|pwd|echo|cd)\b")
 
 
-def read(path):
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except Exception:
-        return ""
+def stripped_command(data):
+    """The Bash payload's command with any injected memory block removed (FR-02)."""
+    return strip_injected((data.get("tool_input") or {}).get("command") or "").strip()
 
 
 def build_signal(data):
     if data.get("hook_event_name") == "UserPromptSubmit":
         if os.environ.get("SESSION_CHRONICLE_CAPTURE_PROMPTS", "1").lower() in ("0", "false", "no", "off"):
             return None
-        text = (data.get("prompt") or "").strip()
-        return {"kind": "prompt", "text": redact(text)} if text else None
+        text = redact(strip_injected(data.get("prompt") or "").strip())
+        return {"kind": "prompt", "text": text} if text else None
     tool = data.get("tool_name", "")
     inp = data.get("tool_input") or {}
     if tool in ("Write", "Edit"):
@@ -52,21 +50,11 @@ def build_signal(data):
     if tool == "Bash":
         if os.environ.get("SESSION_CHRONICLE_CAPTURE_BASH", "1").lower() in ("0", "false", "no", "off"):
             return None
-        cmd = (inp.get("command") or "").strip()
+        cmd = stripped_command(data)
         if not cmd or NOISE_RE.match(cmd):
             return None
         return {"kind": "bash", "cmd": redact(cmd)}
     return None
-
-
-def last_hash(draft):
-    lines = read(draft).strip().splitlines()
-    if not lines:
-        return ""
-    try:
-        return json.loads(lines[-1]).get("_h", "")
-    except Exception:
-        return ""
 
 
 def main():
@@ -91,7 +79,7 @@ def main():
     if sig["kind"] == "prompt" and sig["text"].startswith("/session-chronicle"):
         return
     if sig["kind"] == "bash" and is_maintenance_command(
-            (data.get("tool_input") or {}).get("command", ""),
+            stripped_command(data),
             os.path.join(proj, (data.get("tool_input") or {}).get("workdir") or data.get("cwd") or proj)):
         return
     sig = json.loads(redact(json.dumps(sig)))

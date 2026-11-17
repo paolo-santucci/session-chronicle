@@ -10,7 +10,7 @@ import sys
 
 
 HARNESS = "codex"
-DIAGNOSTIC_OPERATIONS = ("index", "find", "recall", "backlinks", "audit")
+DIAGNOSTIC_OPERATIONS = ("index", "find", "recall", "backlinks", "audit", "retrieve")
 
 
 class Blocked(Exception):
@@ -91,13 +91,26 @@ def capture_arguments(payload):
     event = text_field(payload, "hook_event_name")
     if event == "UserPromptSubmit":
         text_field(payload, "turn_id")
-        # A turn id is not documented as a stable, unique prompt event id.
-        raise Blocked("native_prompt_event_id_and_origin_unproven")
+        text_field(payload, "prompt")
+        raise Blocked("native_prompt_event_id_unproven")
     if event != "PostToolUse":
         raise Blocked("unsupported_capture_event")
-    text_field(payload, "tool_use_id")
-    # PostToolUse also fires after nonzero exits; tool_response has no status schema.
-    raise Blocked("native_tool_status_unproven")
+    name = text_field(payload, "tool_name")
+    if name != "Bash":
+        raise Blocked("native_tool_capture_shape_unsupported")
+    values = payload.get("tool_input")
+    if not isinstance(values, dict):
+        raise Blocked("invalid_tool_input")
+    return {"operation": "process.exec", "event_id": text_field(payload, "tool_use_id"),
+            "command": text_field(values, "command"), "workdir": text_field(payload, "cwd"),
+            "status": "completed", "origin": "unknown"}
+
+
+def capture(payload, context):
+    arguments = capture_arguments(payload)
+    if context["role"] != "primary":
+        raise Blocked("actor_not_primary")
+    return run_core(request(context, "capture", arguments))
 
 
 def attempt(message, diagnostics):
@@ -126,12 +139,11 @@ def hook_output(event, diagnostics, result=None):
     return output
 
 
-def capture_diagnostic(payload):
+def observe_capture(payload, context, diagnostics):
     try:
-        capture_arguments(payload)
+        capture(payload, context)
     except Blocked as error:
-        return str(error)
-    raise Blocked("unsupported_capture_event")
+        diagnostics.append(str(error))
 
 
 def handle_hook(payload):
@@ -148,12 +160,13 @@ def handle_hook(payload):
             run_core(request(context, "guard", arguments))
         return {}
     if event == "UserPromptSubmit":
-        diagnostics.append(capture_diagnostic(payload))
+        observe_capture(payload, context, diagnostics)
         result = attempt(request(context, "find", {
             "query": text_field(payload, "prompt"), "includeEvidence": False}), diagnostics)
         return hook_output(event, diagnostics, result)
     if event == "PostToolUse":
-        return hook_output(event, [capture_diagnostic(payload)])
+        observe_capture(payload, context, diagnostics)
+        return hook_output(event, diagnostics)
     if event in ("Stop", "PreCompact", "SessionEnd", "Interrupt"):
         checkpoint(context, diagnostics)
         if diagnostics and event in ("SessionEnd", "Interrupt"):
@@ -180,7 +193,8 @@ def diagnostic_request(payload, operation, arguments):
     # A fixture is not runtime authentication: diagnostics never mutate identity/state.
     context["role"] = "unknown"
     allowed = {"index": set(), "find": {"query", "includeEvidence"},
-               "recall": {"slug", "scope"}, "backlinks": {"slug"}, "audit": {"mode"}}
+               "recall": {"slug", "scope"}, "backlinks": {"slug"}, "audit": {"mode"},
+               "retrieve": {"query", "exclude"}}
     if operation not in allowed:
         raise Blocked("native_context_transport_required")
     if not isinstance(arguments, dict) or set(arguments) - allowed[operation]:

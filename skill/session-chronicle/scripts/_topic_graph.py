@@ -9,6 +9,7 @@ import re
 from _docsroot import resolve_base
 
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+NOTE_REF = re.compile(r"(?:session|topic):[a-z0-9][a-z0-9-]{0,190}\Z")
 REVIEW_NOTICE = "Structure checks cannot prove atomicity or factual truth; semantic review is required."
 PARSE_ERRORS = ":parse-errors"
 RESOLUTION_CODES = {"alias-collision", "duplicate-id", "redirect-cycle", "redirect-target",
@@ -17,6 +18,11 @@ RESOLUTION_CODES = {"alias-collision", "duplicate-id", "redirect-cycle", "redire
 
 def valid_slug(value):
     return isinstance(value, str) and bool(SLUG.fullmatch(value))
+
+
+def note_ref(value):
+    """A kind-prefixed note reference (session:<stem> or topic:<stem>). Never a path; total."""
+    return isinstance(value, str) and bool(NOTE_REF.fullmatch(value))
 
 
 def unquoted_positions(value):

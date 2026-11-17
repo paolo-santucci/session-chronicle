@@ -1,10 +1,10 @@
 # Consuming the portable Chronicle package
 
-`session-chronicle` **0.2.0** is a schema-v1 UAT source package with exactly four
-adapters: `opencode`, `claude-code`, `codex`, and `pi`. Loading and inspection
-rendering are supported by the package contract; **synchronization currently
-refuses its required capabilities**. No native compatibility or operational
-readiness is established by these packaging tests.
+`session-chronicle` **0.2.1** is a schema-v1 UAT source package with exactly four
+adapters: `opencode`, `claude-code`, `codex`, and `pi`. Loading, inspection
+rendering and Codex hook composition are supported by the package contract;
+**synchronization still refuses unqualified required capabilities**. No native
+compatibility or operational readiness is established by these packaging tests.
 
 Sources checked on 2026-10-15: this repository's [`plugin.yaml`](../plugin.yaml),
 [`scripts/build-package.py`](../scripts/build-package.py), and the read-only UAT
@@ -25,8 +25,8 @@ files. Build a clean, deterministic stage first:
 ```sh
 python3 -B scripts/build-package.py --write-manifest
 python3 -B scripts/build-package.py \
-  --output /tmp/opencode/chronicle-0.2.0-stage \
-  --archive /tmp/opencode/chronicle-0.2.0.tar.gz
+  --output /tmp/opencode/chronicle-0.2.1-stage \
+  --archive /tmp/opencode/chronicle-0.2.1.tar.gz
 ```
 
 Choose new output paths on subsequent runs. The builder refuses existing stages
@@ -111,7 +111,7 @@ from uat.definitions import Library
 from uat.packages import add_package
 
 library = Library(Path("/path/to/neutral-library"))
-resolved_package = add_package(library, Path("/tmp/opencode/chronicle-0.2.0-stage"))
+resolved_package = add_package(library, Path("/tmp/opencode/chronicle-0.2.1-stage"))
 ```
 
 Loading makes definitions available; roster selection activates dependency
@@ -130,7 +130,7 @@ For example, with an operator-provided library, roster and profile:
 
 ```sh
 uat render --library /path/to/neutral-library \
-  --plugin-package /tmp/opencode/chronicle-0.2.0-stage \
+  --plugin-package /tmp/opencode/chronicle-0.2.1-stage \
   --roster YOUR_ROSTER --profile YOUR_PROFILE \
   --harness opencode --harness-version 2.0.26 \
   --workspace /path/to/disposable-workspace \
@@ -140,7 +140,7 @@ uat render --library /path/to/neutral-library \
 `render` exports into an empty output directory; it does not install into the
 workspace (`uat/cli.py:_compile`, `uat/deployment.py:export_artifacts`). The UAT
 reference baselines inspected are OpenCode `2.0.26`, Claude Code `2.1.299`, Codex
-`0.162.1`, and Pi `1.2.0`; these are accepted render inputs, **not tested native
+`0.163.0`, and Pi `1.2.0`; these are accepted render inputs, **not tested native
 compatibility ranges** (`uat/adapters/common.py:BASELINES`).
 
 ## Pinned archive consumption
@@ -152,12 +152,12 @@ and exact version, then load the extracted package. For a locally built archive:
 from pathlib import Path
 from uat.packages import unpack_package
 
-archive = Path("/tmp/opencode/chronicle-0.2.0.tar.gz")
+archive = Path("/tmp/opencode/chronicle-0.2.1.tar.gz")
 lock = unpack_package(
     archive.read_bytes(),
     "COPY_THE_EXACT_archive_sha256_FROM_BUILD_OUTPUT",
-    "0.2.0",
-    Path("/tmp/opencode/chronicle-0.2.0-unpacked"),
+    "0.2.1",
+    Path("/tmp/opencode/chronicle-0.2.1-unpacked"),
 )
 ```
 
@@ -197,13 +197,12 @@ require native project/hook trust. These are activation requirements, not action
 performed by this builder (root manifest activation fields; UAT
 `docs/adapter-contracts.md` §Status and telemetry implementation).
 
-Claude/Codex Chronicle hook scripts are shipped but **not registered by UAT**.
-Any registration JSON shipped under the package subtree is inert. UAT owns
-`.claude/settings.json` and `.codex/hooks.json`; a package mapping to either would
-collide rather than merge. The toolkit needs explicit Chronicle hook composition
-that preserves status/statistics wiring. There is no arbitrary JSON-fragment
-merge or native-artifact templating in this package. Export inspection confirms
-UAT's own hooks survive and does not claim Chronicle's hooks run.
+Codex Chronicle hook scripts are registered through eight structured
+`adapters.codex.hooks` declarations. UAT composes them into `.codex/hooks.json`,
+preserves its status/statistics groups and emits an artifact-bound contribution
+inventory. The shipped fragment remains inert reference material. Claude still has
+no Chronicle structured contribution in this package. Composition does not activate
+or qualify native hooks, and registration order does not serialize execution.
 
 The package also declares known native gaps independently of toolkit integration.
 Its aggregate required capabilities currently have these statuses
@@ -229,22 +228,19 @@ partial coverage are documented in the bundled adapter READMEs and runtime
 contracts. Fixing toolkit integration alone does not close these gaps; known
 unsupported requirements remain unsupported until their native guarantees exist.
 
-There is a separate UAT renderer blocker. In the inspected implementation,
-`uat/adapters/common.py:Artifacts.finish` recognizes only its built-in plugin
-allowlist and sets external plugins' **required capabilities to `unsupported`**.
-`uat/packages.py:apply_package_artifacts` cannot promote an existing unsupported
-capability using a package's `unverified` declaration. A targeted integration test
-uses an inert synthetic external capability declared `unverified` to reproduce
-this behavior without weakening Chronicle's production declarations. Consequently all four
-targets retain required blockers for:
+UAT now preserves implemented external package capabilities as `unverified` and
+can qualify exact artifacts. Explicit `unsupported` declarations still win.
+Consequently Codex retains blockers for all required capabilities until native
+qualification, with capture and session context explicitly unsupported:
 
 - `chronicle.capture`
 - `chronicle.retrieval`
 - `chronicle.session-context`
 - `chronicle.protected-history`
 
-UAT `compatibility_report`/`install` refuse these requirements. Unsupported
-capabilities cannot be promoted by qualification attestations. Required
+UAT `compatibility_report`/`install` refuse these requirements until exact-artifact
+evidence qualifies eligible unverified capabilities. Unsupported capabilities
+cannot be promoted by qualification attestations. Required
 capabilities remain required; tests never remove them or manufacture passing
 evidence. Native implementation gaps, toolkit integration, and genuine
 exact-artifact qualification are separate gates. `statistics.capture`, `status.context`, skill
@@ -255,12 +251,14 @@ bindings for Chronicle tools (`uat/schemas/definition.json`, `policy.rules`).
 Protected-history guards describe only implemented hook/tool coverage; they do
 not establish shell, delegation, hosted-tool, or hostile-extension containment.
 
-Memory belongs outside replaceable configuration. The packaged `_docsroot.py`
+Memory belongs outside replaceable configuration. UAT now preflights the authored
+current/prior docs-root through sync, package removal, rollback and crash recovery,
+including staged and backed-up instruction views. The packaged `_docsroot.py`
 rejects docs roots overlapping `.opencode`, `.claude`, `.codex`, `.pi`, or
 `.agents`. Tests preserve session notes, topics, drafts, pending batches,
 continuations, native session files and other-harness settings during separate
-inspection exports. This proves read-only rendering behavior and overlap
-rejection, **not successful deployment preservation**.
+inspection exports. UAT fixture evidence covers transactional preservation, while
+native runtime races and separate deployment-owner coordination remain unqualified.
 
 ## Reproduce integration checks
 
@@ -280,7 +278,8 @@ export workspaces are disposable, under `/tmp/opencode` when available.
 The integration suite uses the real `add_package`, resolver, compiler, four
 renderers, capability reporter, export path and pinned archive unpacker. It checks
 selection, cycles, exclusions, collisions, byte-exact native resources,
-fingerprint changes, missing requirements, the external-plugin blocker, and
+fingerprint changes, missing requirements, unverified external capabilities, Codex
+hook composition and
 refusal before any installation writes. Fixture model bindings are explicitly
 inert `fixture/inert` strings needed only by the render contract. Tests launch no
 model, select no real model, deploy no configuration, and supply no qualification

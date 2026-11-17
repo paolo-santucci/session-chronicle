@@ -86,6 +86,64 @@ test("times out and kills a non-responsive worker without waiting for the produc
   expect(worker.killed()).toBe(true)
 })
 
+function fakeReplyingWorker(reply: unknown) {
+  const requests: string[] = []
+  const worker = fakeWorker()
+  worker.child.stdin.end = (input: string) => { requests.push(input) }
+  const spawnWorker = () => {
+    queueMicrotask(() => {
+      worker.child.stdout.emit("data", JSON.stringify(reply))
+      worker.child.emit("close", 0)
+    })
+    return worker.spawned
+  }
+  return { requests, spawnWorker }
+}
+
+/** The worker request is a protocol boundary, so the parsed value is narrowed before assertion. */
+function workerEnvelope(input: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(input)
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("worker request must be a JSON object")
+  return parsed as Record<string, unknown>
+}
+
+// `Operation` is a compile-time roster, so membership is asserted by `tsc --noEmit` on the call below;
+// this test pins the wire behaviour the member unlocks.
+test("forwards a retrieve envelope verbatim and returns the worker reply unmodified", async () => {
+  const { context } = fixture()
+  const reply = { ok: true as const, result: { text: "### [topic] octopus", slugs: ["topic:octopus"] } }
+  const worker = fakeReplyingWorker(reply)
+  const run = createWorkerRunner({ resolveWorker: async () => "/bundle/core/chronicle.py", spawnWorker: worker.spawnWorker })
+  const arguments_ = { query: "octopus", exclude: ["session:x"] }
+
+  await expect(run("retrieve", context, arguments_)).resolves.toEqual(reply)
+
+  expect(worker.requests).toHaveLength(1)
+  const envelope = workerEnvelope(worker.requests[0])
+  expect(envelope).toEqual({
+    schema_version: 1,
+    operation: "retrieve",
+    context: { harness: "pi", session_id: "ses_1", workspace: "/workspace", role: "unknown" },
+    arguments: { query: "octopus", exclude: ["session:x"] },
+  })
+  expect(Object.keys(envelope.arguments as Record<string, unknown>).sort()).toEqual(["exclude", "query"])
+  expect(arguments_).toEqual({ query: "octopus", exclude: ["session:x"] })
+})
+
+test("forwards an operation outside the roster verbatim and returns its rejection unchanged", async () => {
+  const { context } = fixture()
+  const reply = { ok: false as const, error: { code: "invalid_request", message: "unsupported operation" } }
+  const worker = fakeReplyingWorker(reply)
+  const run = createWorkerRunner({ resolveWorker: async () => "/bundle/core/chronicle.py", spawnWorker: worker.spawnWorker })
+
+  // The roster stays closed: an operation outside `Operation` is rejected at the type boundary, as today.
+  // @ts-expect-error "retrieve_v2" is not an Operation member
+  await expect(run("retrieve_v2", context, { query: "octopus" })).resolves.toEqual(reply)
+
+  expect(worker.requests).toHaveLength(1)
+  expect(workerEnvelope(worker.requests[0]).operation).toBe("retrieve_v2")
+})
+
 test("caps noisy worker stdout and kills the child", async () => {
   const { context } = fixture()
   const worker = fakeWorker()

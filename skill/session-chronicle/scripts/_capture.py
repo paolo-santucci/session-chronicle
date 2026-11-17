@@ -7,6 +7,7 @@ import re
 import shlex
 
 from _checkpoint import append_record, redact, sync_directory, writer_lock
+from _memory_markers import strip_injected
 from _session_notes import note_lint
 from _storage_paths import regular_file, storage_layout
 
@@ -39,6 +40,7 @@ def is_maintenance_command(command, cwd):
         "topic-index.sh", "retrieve-inject.py", "memory-recall.sh", "memory-audit.py",
         "backlinks.py", "slugify.py", "_docsroot.py", "session-context.py", "_session_notes.py",
         "topic-maintenance.py", "topic-patch-lint.py", "_memory_read.py", "chronicle.py",
+        "chronicle-doctor.py",
     }
 
 
@@ -47,8 +49,8 @@ def select_signal(arguments, project, base):
     if operation == "prompt.submit":
         if os.environ.get("SESSION_CHRONICLE_CAPTURE_PROMPTS", "1").lower() in DISABLED:
             return None
-        text = arguments["text"].strip()
-        return {"kind": "prompt", "text": redact(text)} if text and not text.startswith("/session-chronicle") else None
+        text = redact(strip_injected(arguments["text"]).strip())
+        return {"kind": "prompt", "text": text} if text and not text.startswith("/session-chronicle") else None
     if operation.startswith("files."):
         path = Path(project, arguments["path"]).resolve()
         if any(path.is_relative_to((Path(base) / folder).resolve())
@@ -57,7 +59,7 @@ def select_signal(arguments, project, base):
         return {"kind": "file", "op": operation, "path": redact(arguments["path"])}
     if os.environ.get("SESSION_CHRONICLE_CAPTURE_BASH", "1").lower() in DISABLED:
         return None
-    command = arguments["command"].strip()
+    command = strip_injected(arguments["command"]).strip()
     workdir = Path(project, arguments.get("workdir") or project)
     if not command or NOISE_RE.match(command) or is_maintenance_command(command, workdir):
         return None

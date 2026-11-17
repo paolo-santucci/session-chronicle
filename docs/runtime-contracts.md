@@ -1,5 +1,5 @@
 ---
-date: 2026-10-15
+date: 2026-10-23
 status: source-evidence-not-runtime-certification
 ---
 
@@ -16,13 +16,12 @@ UAT reference versions are not certification of Chronicle or compatibility range
 |---|---|---|
 | OpenCode | [V2 plugin documentation](https://opencode.ai/v2/docs/build/plugins), [2.0.26 session API](https://raw.githubusercontent.com/anomalyco/opencode/v2.0.26/packages/plugin/src/promise/session.ts), installed `@opencode/plugin` types | Session lookup supplies parent and current location; tool before-hooks can throw; after-hooks distinguish completed/error; tool registration uses transform; prompt text is mutable |
 | Claude Code | [hooks reference](https://code.claude.com/docs/en/hooks.md), [mods API](https://code.claude.com/docs/en/plugins/mods/api.md), [mods build instructions](https://code.claude.com/docs/en/plugins/mods/create.md), [manifest](https://code.claude.com/docs/en/plugins/manifest-reference.md) | Hook fields/decisions vary by event and build; new mods can register tools but need compatible CLI/build types and verified trusted call context |
-| Codex CLI | [hooks reference](https://developers.openai.com/codex/hooks.md), [MCP](https://learn.chatgpt.com/docs/extend/mcp.md), [0.162.1 schema](https://raw.githubusercontent.com/openai/codex/rust-v0.162.1/codex-rs/core/config.schema.json) | Hooks compose and require trust; PostToolUse alone does not prove success; schema acceptance is not tool discovery or complete actor attribution; stdio MCP does not itself supply a trusted current-session transport |
+| Codex CLI | [hooks reference](https://developers.openai.com/codex/hooks.md), [0.163.0 hook producer](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core/src/hook_runtime.rs), [PostToolUse implementation](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/events/post_tool_use.rs) | UAT composes artifact-bound hooks; PostToolUse is produced after successful output and native turn/tool IDs are preserved; optional child fields identify thread-spawn children but absence does not identify a primary or exclude internal/synthetic sessions |
 | Pi | [extensions](https://pi.dev/docs/latest/extensions), [skills](https://pi.dev/docs/latest/skills), [extension types](https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/core/extensions/types.ts) | Extension context supplies cwd/session manager; tool_call can block, streaming observation cannot; input sources and native IDs must be checked before capture; external child provenance needs a documented contract |
 
-Installed executable probes before implementation: `opencode --version` → 2.0.29;
-`claude --version` → 2.1.220. Codex/Pi were absent from PATH. No native version was
-installed, upgraded, authenticated or silently substituted for testing. Native
-model execution is not a configuration lint.
+Chronicle did not install, upgrade, authenticate or invoke a native runtime. UAT
+reported Codex 0.163.0 in Ansel and separate model/app-server smoke evidence. That
+evidence does not qualify Chronicle, composed hooks or a production workflow.
 
 ## Enforcement coverage to qualify
 

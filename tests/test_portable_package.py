@@ -66,7 +66,7 @@ class PortablePackageTests(unittest.TestCase):
         report = builder.stage_package(self.source, stage)
         self.assertFalse(any(path.is_symlink() for path in stage.rglob("*")))
         self.assertFalse(any(b"DO NOT SHIP" in path.read_bytes() for path in stage.rglob("*") if path.is_file()))
-        self.assertEqual((report["id"], report["version"]), ("session-chronicle", "0.2.0"))
+        self.assertEqual((report["id"], report["version"]), ("session-chronicle", "0.2.1"))
         self.assertTrue((stage / "core/chronicle.py").is_file())
         self.assertEqual((stage / "core/chronicle.py").read_bytes(),
                          (stage / "skills/session-chronicle/scripts/chronicle.py").read_bytes())
@@ -219,6 +219,61 @@ class PortablePackageTests(unittest.TestCase):
         path.symlink_to(write(self.base, "sibling/runtime-contracts.md"))
         with self.assertRaisesRegex(ValueError, "physical"):
             builder.stage_package(self.source, self.base / "stage")
+
+
+RUNTIME_SCRIPTS = tuple(sorted(
+    path.name for path in (ROOT / builder.CORE_SOURCE).glob("*.py") if builder.runtime_name(path)
+))
+
+
+def load_module(path: Path, name: str):
+    specification = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+def unregistered_modules(manifest: dict) -> dict[str, list[str]]:
+    prefix = builder.CORE_SOURCE.as_posix() + "/"
+    missing = {}
+    for harness, adapter in manifest["adapters"].items():
+        registered = {Path(source).name for source in adapter["files"] if source.startswith(prefix)}
+        absent = sorted(set(RUNTIME_SCRIPTS) - registered)
+        if absent:
+            missing[harness] = absent
+    return missing
+
+
+class AdapterManifestTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="chronicle-manifest-test-", dir=TEMP_ROOT)
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name)
+        self.manifest = json.loads((ROOT / "plugin.yaml").read_text())
+
+    def test_all_four_adapter_maps_register_every_runtime_script(self):
+        missing = unregistered_modules(self.manifest)
+        self.assertEqual(missing, {}, f"plugin.yaml adapter maps omit runtime modules: {missing}")
+
+    def test_registration_gap_names_the_adapter_map(self):
+        broken = json.loads(json.dumps(self.manifest))
+        del broken["adapters"]["codex"]["files"]["skill/session-chronicle/scripts/_memory_markers.py"]
+        missing = unregistered_modules(broken)
+        self.assertEqual(list(missing), ["codex"])
+        self.assertEqual(missing["codex"], ["_memory_markers.py"])
+
+    def test_installed_bundles_expose_the_marker_leaf(self):
+        stage = self.base / "stage"
+        builder.stage_package(ROOT, stage)
+        staged = json.loads((stage / "plugin.yaml").read_text())
+        for harness, destination in builder.DESTINATIONS.items():
+            with self.subTest(harness=harness):
+                files = staged["adapters"][harness]["files"]
+                self.assertEqual(files["core/_memory_markers.py"], destination + "/core/_memory_markers.py")
+                leaf = load_module(stage / "core/_memory_markers.py", f"installed_{harness}_markers")
+                fixture = "Refactor the parser\n\n" + leaf.RETRIEVAL_HEADING + "\n### [session] note"
+                self.assertEqual(leaf.strip_injected(fixture), "Refactor the parser")
+        self.assertNotIn("## Project memory", (stage / "core/_memory_read.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

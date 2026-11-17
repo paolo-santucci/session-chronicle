@@ -5,7 +5,7 @@ import { Type } from "typebox"
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent"
 
 type Role = "primary" | "delegated" | "unknown"
-type Operation = "capture" | "checkpoint" | "context" | "find" | "recall" | "backlinks" | "audit" | "index" | "guard" | "continuation"
+type Operation = "capture" | "checkpoint" | "context" | "find" | "recall" | "backlinks" | "audit" | "index" | "guard" | "continuation" | "retrieve"
 type WorkerReply = { ok: true; result: object | string } | { ok: false; error: { code: string; message: string } }
 type RunWorker = (operation: Operation, context: ExtensionContext, arguments_: Record<string, unknown>) => Promise<WorkerReply>
 type WorkerRunnerOptions = {

@@ -64,6 +64,20 @@ class MemoryContractTests(unittest.TestCase):
         self.assertIn("(topic)", result.stdout)
         self.assertNotIn("raw evidence", result.stdout)
 
+    def test_topics_never_age_out_of_the_scan_window(self):
+        topics = self.base / "topics"
+        topics.mkdir()
+        topic = topics / "octopus-topic.md"
+        topic.write_text("---\ntype: topic\ntitle: Octopus\nnote-kind: atomic\n---\nOctopus distilled knowledge.")
+        os.utime(topic, (1, 1))
+        for index in range(10):
+            path = self.sessions / f"2026-01-{index + 1:02d}--session.md"
+            path.write_text(f"---\ntype: session\ntitle: Other {index}\n---\nUnrelated body {index}.")
+        result = self.run_script("retrieve-inject.py", {"prompt": "octopus"},
+                                 {"MEMORY_INJECT_MAX_SCAN": "3", "MEMORY_INJECT_TOPK": "3"})
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("octopus-topic", result.stdout)
+
     def test_explicit_retrieval_can_include_factual_records(self):
         (self.sessions / "evidence.md").write_text(
             "---\ntype: session\nrecord-kind: factual-evidence\n---\nOctopus raw evidence.")

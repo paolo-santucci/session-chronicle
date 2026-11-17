@@ -14,9 +14,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+try:
+    import jsonschema
+except ModuleNotFoundError as error:
+    if error.name != "jsonschema":
+        raise
+    jsonschema = None
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "skill/session-chronicle/scripts/chronicle.py"
+SCHEMA = ROOT / "schemas/envelope.schema.json"
 
 
 def load_adapter(harness):
@@ -112,7 +120,7 @@ class NativeTranslationTests(unittest.TestCase):
     def test_missing_native_event_ids_are_not_generated(self):
         cases = [(CLAUDE, fixture("UserPromptSubmit", prompt="same content")),
                  (CLAUDE, write_fixture("PostToolUse")),
-                 (CODEX, fixture("PostToolUse", tool_name="Bash"))]
+                 (CODEX, fixture("PostToolUse", tool_name="Bash", tool_input={"command": "true"}))]
         for adapter, payload in cases:
             payload.pop("tool_use_id", None)
             with self.subTest(harness=adapter.HARNESS, event=payload["hook_event_name"]):
@@ -149,18 +157,31 @@ class NativeTranslationTests(unittest.TestCase):
         worker.assert_not_called()
         self.assertIn("capture_failed_tool_excluded", output["systemMessage"])
 
-    def test_codex_post_tool_status_and_origin_are_never_guessed(self):
+    def test_codex_post_tool_success_keeps_unknown_actor_and_origin(self):
         for response in (None, {"exit_code": 0}, {"success": True}, "Process exited with code 0"):
             payload = fixture("PostToolUse", tool_name="Bash", tool_use_id="call-20",
                               tool_input={"command": "true"}, tool_response=response, status="completed", origin="user")
             with self.subTest(response=response), patch.object(CODEX, "run_core") as worker:
                 output = CODEX.handle_hook(payload)
-                self.assertIn("native_tool_status_unproven", output["systemMessage"])
+                self.assertIn("actor_not_primary", output["systemMessage"])
                 worker.assert_not_called()
 
-    def test_codex_turn_id_is_not_promoted_to_prompt_event_id(self):
+    def test_codex_turn_id_is_not_promoted_to_prompt_event_identity(self):
         payload = fixture("UserPromptSubmit", turn_id="turn-21", prompt="fixture prompt", origin="user")
-        with self.assertRaisesRegex(CODEX.Blocked, "native_prompt_event_id_and_origin_unproven"):
+        with self.assertRaisesRegex(CODEX.Blocked, "native_prompt_event_id_unproven"):
+            CODEX.capture_arguments(payload)
+
+    def test_codex_successful_bash_translates_native_call_identity(self):
+        payload = fixture("PostToolUse", tool_name="Bash", tool_use_id="call-22",
+                          tool_input={"command": "python3 -m unittest"})
+        self.assertEqual(CODEX.capture_arguments(payload), {
+            "operation": "process.exec", "event_id": "call-22", "status": "completed",
+            "origin": "unknown", "command": "python3 -m unittest", "workdir": "/workspace/project"})
+
+    def test_codex_patch_capture_does_not_invent_single_path(self):
+        payload = fixture("PostToolUse", tool_name="apply_patch", tool_use_id="call-23",
+                          tool_input={"command": "*** Begin Patch\n*** End Patch"})
+        with self.assertRaisesRegex(CODEX.Blocked, "native_tool_capture_shape_unsupported"):
             CODEX.capture_arguments(payload)
 
     def test_children_cannot_checkpoint_parent_memory(self):
@@ -190,7 +211,8 @@ class NativeTranslationTests(unittest.TestCase):
 
     def test_diagnostics_reject_identity_and_never_adopt_fixture_role(self):
         arguments = {"index": {}, "find": {"query": "fixture"}, "recall": {"slug": "fixture"},
-                     "backlinks": {"slug": "fixture"}, "audit": {"mode": "orphans"}}
+                     "backlinks": {"slug": "fixture"}, "audit": {"mode": "orphans"},
+                     "retrieve": {"query": "fixture"}}
         for adapter in (CLAUDE, CODEX):
             for operation in adapter.DIAGNOSTIC_OPERATIONS:
                 with self.subTest(harness=adapter.HARNESS, operation=operation):
@@ -201,6 +223,52 @@ class NativeTranslationTests(unittest.TestCase):
                         adapter.diagnostic_request(fixture(), operation, {"session_id": "model-invented"})
             with self.assertRaisesRegex(adapter.Blocked, "native_context_transport_required"):
                 adapter.diagnostic_request(fixture(), "context", {})
+
+
+class RetrieveRegistrationTests(unittest.TestCase):
+    """FR-41 sites 4-6: both hooks register `retrieve` with exactly {query, exclude}."""
+
+    def test_both_hooks_allow_retrieve_with_exactly_query_and_exclude(self):
+        accepted = [{"query": "fixture"},
+                    {"query": "fixture", "exclude": ["session:x", "topic:y"]}]
+        rejected = [{"slug": "fixture"}, {"query": "fixture", "scope": "all"}, {"mode": "orphans"},
+                    {"query": "fixture", "includeEvidence": True}, {"query": "fixture", "session_id": "invented"}]
+        for adapter in (CLAUDE, CODEX):
+            with self.subTest(harness=adapter.HARNESS):
+                self.assertIn("retrieve", adapter.DIAGNOSTIC_OPERATIONS)
+                for arguments in accepted:
+                    request = adapter.diagnostic_request(fixture("SessionEnd"), "retrieve", dict(arguments))
+                    self.assertEqual((request["operation"], request["arguments"]), ("retrieve", arguments))
+                    self.assertEqual(request["context"]["role"], "unknown")
+                for arguments in rejected:
+                    with self.assertRaisesRegex(adapter.Blocked, "invalid_read_arguments"):
+                        adapter.diagnostic_request(fixture(), "retrieve", arguments)
+
+    def test_retrieve_fixture_arguments_fit_the_envelope_schema(self):
+        schema = json.loads(SCHEMA.read_text())
+        self.assertIn("retrieve", schema["properties"]["operation"]["enum"])
+        branches = [entry for entry in schema["allOf"]
+                    if entry["if"]["properties"].get("operation") == {"const": "retrieve"}]
+        self.assertEqual(len(branches), 1)
+        arguments = branches[0]["then"]["properties"]["arguments"]
+        self.assertEqual((arguments["additionalProperties"], arguments["required"]), (False, ["query"]))
+        for adapter in (CLAUDE, CODEX):
+            fixture_arguments = adapter.diagnostic_request(
+                fixture("SessionEnd"), "retrieve", {"query": "fixture"})["arguments"]
+            with self.subTest(harness=adapter.HARNESS):
+                self.assertLessEqual(set(fixture_arguments), set(arguments["properties"]))
+                self.assertLessEqual(set(arguments["required"]), set(fixture_arguments))
+
+    @unittest.skipUnless(jsonschema is not None, "jsonschema unavailable; run with UAT's .venv/bin/python -B")
+    def test_retrieve_fixture_envelope_validates_against_the_schema(self):
+        schema = json.loads(SCHEMA.read_text())
+        validator = jsonschema.validators.validator_for(schema)(schema)
+        for adapter in (CLAUDE, CODEX):
+            for arguments in ({"query": "fixture"},
+                              {"query": "fixture", "exclude": ["session:x", "topic:y"]}):
+                envelope = adapter.diagnostic_request(fixture("SessionEnd"), "retrieve", dict(arguments))
+                with self.subTest(harness=adapter.HARNESS, arguments=arguments):
+                    validator.validate(envelope)
 
 
 class NativeFailureTests(unittest.TestCase):

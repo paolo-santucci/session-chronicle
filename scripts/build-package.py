@@ -17,7 +17,7 @@ import tempfile
 
 
 PACKAGE_ID = "session-chronicle"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 SKILLS = (PACKAGE_ID, PACKAGE_ID + "-bootstrap", PACKAGE_ID + "-refactor")
 DESTINATIONS = {
     "opencode": ".opencode/plugins/session-chronicle",
@@ -126,7 +126,7 @@ def runtime_maps(selected: dict[str, str], staged: bool = False) -> dict:
 def manifest(root: Path, selected: dict[str, str], staged: bool = False) -> dict:
     value = json.loads(physical_file(root, Path("plugin.yaml")).read_text())
     if (value.get("id"), value.get("version")) != (PACKAGE_ID, VERSION):
-        raise ValueError("Package manifest must identify session-chronicle version 0.2.0")
+        raise ValueError(f"Package manifest must identify session-chronicle version {VERSION}")
     if set(value.get("adapters", {})) != set(DESTINATIONS):
         raise ValueError("Package manifest must declare exactly four adapters")
     for harness, files in runtime_maps(selected, staged).items():

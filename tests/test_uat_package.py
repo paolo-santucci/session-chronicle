@@ -36,6 +36,7 @@ if UAT_AVAILABLE:
         from uat.definitions import Definition, Library, read_definition, validate_metadata
         from uat.deployment import compatibility_report, export_artifacts, install
         from uat.errors import ToolkitError
+        from uat.hook_composition import HOOK_INVENTORY
         from uat.packages import add_package, unpack_package
         from uat.resolution import resolve
     except ModuleNotFoundError as error:
@@ -82,7 +83,7 @@ class UATPackageTests(unittest.TestCase):
         cls.base = Path(cls.temporary.name)
         cls.stage = cls.base / "package"
         builder.stage_package(ROOT, cls.stage)
-        cls.archive = cls.base / "session-chronicle-0.2.0.tar.gz"
+        cls.archive = cls.base / "session-chronicle-0.2.1.tar.gz"
         cls.sha256 = builder.archive_package(cls.stage, cls.archive)
 
     def setUp(self):
@@ -98,7 +99,7 @@ class UATPackageTests(unittest.TestCase):
 
     def test_source_manifest_is_schema_valid_and_maps_current_physical_inventory(self):
         definition = read_definition(ROOT / "plugin.yaml")
-        self.assertEqual((definition.id, definition.metadata["version"]), ("session-chronicle", "0.2.0"))
+        self.assertEqual((definition.id, definition.metadata["version"]), ("session-chronicle", "0.2.1"))
         self.assertEqual(set(definition.metadata["adapters"]), set(BASELINES))
         expected = builder.runtime_maps(builder.inventory(ROOT))
         required = {
@@ -123,13 +124,20 @@ class UATPackageTests(unittest.TestCase):
             })
             self.assertEqual(staged["adapters"][harness]["capabilities"], adapter["capabilities"])
             self.assertEqual(staged["adapters"][harness]["activation"], adapter["activation"])
+            self.assertEqual(staged["adapters"][harness].get("hooks"), adapter.get("hooks"))
         self.assertEqual(staged["capabilities"], definition.metadata["capabilities"])
+
+        codex = definition.metadata["adapters"]["codex"]
+        self.assertEqual(len(codex["hooks"]), 8)
+        self.assertTrue(all(hook["artifact"] in codex["files"] for hook in codex["hooks"]))
+        limits = {hook["event"]: hook["timeout"] for hook in codex["hooks"]}
+        self.assertEqual((limits["SessionEnd"], limits["Interrupt"]), (3, 3))
 
     def test_package_selection_resolves_all_skills_and_native_status_statistics(self):
         selected = resolve(self.library, "package-test", statistics=True)
         self.assertEqual(set(selected["skills"]), set(builder.SKILLS))
         self.assertEqual(set(selected["plugins"]), {"session-chronicle", "agent-statistics", "status-inject"})
-        self.assertEqual(self.package["version"], "0.2.0")
+        self.assertEqual(self.package["version"], "0.2.1")
         self.assertFalse(selected["plugins"]["session-chronicle"].metadata["requires"].get("skills"))
 
     def test_loading_without_selection_does_not_enable_chronicle(self):
@@ -188,7 +196,16 @@ class UATPackageTests(unittest.TestCase):
                     native = json.loads(rendered["files"][path])
                     self.assertIn("SessionStart", native["hooks"])
                     self.assertIn("PostToolUse", native["hooks"])
-                    self.assertNotIn("session-chronicle", rendered["files"][path])
+                    if harness == "codex":
+                        inventory = json.loads(rendered["files"][HOOK_INVENTORY[harness]])
+                        self.assertEqual(len(inventory["contributions"]), 8)
+                        self.assertEqual({entry["owner"] for entry in inventory["contributions"]},
+                                         {"session-chronicle"})
+                        commands = [handler["command"] for groups in native["hooks"].values()
+                                    for group in groups for handler in group["hooks"]]
+                        self.assertTrue(any("session-chronicle" in command for command in commands))
+                    else:
+                        self.assertNotIn("session-chronicle", rendered["files"][path])
                 else:
                     prefix = ".opencode/plugins" if harness == "opencode" else ".pi/extensions"
                     self.assertIn(prefix + "/uat/index.ts", rendered["files"])
@@ -209,7 +226,9 @@ class UATPackageTests(unittest.TestCase):
                 deployment, rendered, report = self.compile(harness)
                 blockers = {item["capability"]: item["status"] for item in report["blockers"]}
                 self.assertFalse(report["deployable"])
-                self.assertTrue(all(blockers[capability] == "unsupported" for capability in required))
+                expected = self.library.get("plugins", "session-chronicle").metadata[
+                    "adapters"][harness]["capabilities"]
+                self.assertEqual({capability: blockers[capability] for capability in required}, expected)
                 with self.assertRaisesRegex(ToolkitError, "Required capabilities lack runtime qualification"):
                     install(workspace, deployment, rendered)
         self.assertEqual(list(workspace.iterdir()), [sentinel])
@@ -222,13 +241,21 @@ class UATPackageTests(unittest.TestCase):
         report = compatibility_report(deployment, rendered)
         self.assertIn({"capability": required, "status": "unverified"}, report["blockers"])
 
-    def test_uat_allowlist_marks_synthetic_unverified_external_capability_unsupported(self):
+    def test_external_implementation_remains_unverified_until_qualified(self):
         capability = "fixture.external-capability"
+        destinations = {
+            "opencode": ".opencode/plugins/inert-external/adapter.txt",
+            "claude-code": ".claude/hooks/inert-external/adapter.txt",
+            "codex": ".codex/hooks/inert-external/adapter.txt",
+            "pi": ".pi/extensions/inert-external/adapter.txt",
+        }
         plugin = Definition(metadata(
             "plugin", "inert-external", version="0.0.0", requires={},
             capabilities={"required": [capability], "optional": []},
-            adapters={harness: {"capabilities": {capability: "unverified"}} for harness in BASELINES},
-        ))
+            adapters={harness: {"files": {"adapter.txt": destinations[harness]},
+                                "capabilities": {capability: "unverified"}}
+                      for harness in BASELINES},
+        ), resources={"adapter.txt": b"implemented fixture\n"})
         validate_metadata(plugin.metadata)
         self.library.add("plugins", plugin)
         roster = self.library.get("rosters", "package-test")
@@ -239,8 +266,8 @@ class UATPackageTests(unittest.TestCase):
             with self.subTest(harness=harness):
                 _, rendered, report = self.compile(harness)
                 self.assertEqual(plugin.metadata["adapters"][harness]["capabilities"][capability], "unverified")
-                self.assertEqual(rendered["capabilities"][capability], "unsupported")
-                self.assertIn({"capability": capability, "status": "unsupported"}, report["blockers"])
+                self.assertEqual(rendered["capabilities"][capability], "unverified")
+                self.assertIn({"capability": capability, "status": "unverified"}, report["blockers"])
 
     def test_plugin_artifact_collision_is_rejected(self):
         plugin = self.library.get("plugins", "session-chronicle")
@@ -291,11 +318,11 @@ class UATPackageTests(unittest.TestCase):
 
     def test_pinned_local_archive_loads_with_real_unpack_package(self):
         destination = self.case / "unpacked"
-        lock = unpack_package(self.archive.read_bytes(), self.sha256, "0.2.0", destination)
+        lock = unpack_package(self.archive.read_bytes(), self.sha256, "0.2.1", destination)
         library = fixture_library(self.case / "archive-library")
         package = add_package(library, destination)
         self.assertEqual((lock["id"], lock["version"], lock["sha256"]),
-                         ("session-chronicle", "0.2.0", self.sha256))
+                         ("session-chronicle", "0.2.1", self.sha256))
         self.assertEqual(package["id"], "session-chronicle")
         for harness, version in BASELINES.items():
             _, _, report = compile_roster(library, "package-test", "inert-profile", harness, version)
@@ -316,7 +343,7 @@ class UATPackageTests(unittest.TestCase):
     def test_wrong_archive_digest_and_version_are_rejected_without_destination(self):
         destination = self.case / "unpacked"
         with self.assertRaisesRegex(ToolkitError, "pinned digest"):
-            unpack_package(self.archive.read_bytes(), "0" * 64, "0.2.0", destination)
+            unpack_package(self.archive.read_bytes(), "0" * 64, "0.2.1", destination)
         with self.assertRaisesRegex(ToolkitError, "pinned plugin version"):
             unpack_package(self.archive.read_bytes(), self.sha256, "9.9.9", destination)
         self.assertFalse(destination.exists())
