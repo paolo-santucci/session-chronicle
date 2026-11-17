@@ -1,5 +1,5 @@
 schema-version: 2
-last-updated: "2026-11-17T19:26:00+01:00"
+last-updated: "2026-11-17T20:05:00+01:00"
 active-plan: null
 last-plan: "docs/plans/archive/sp-20261116-retrieval-integrity-performance-plan.md"
 
@@ -52,7 +52,9 @@ long-plan:
 
 pending-consolidation: []
 
-recently-completed: []
+recently-completed:
+  - date: 2026-11-17
+    summary: "Hardened retrieval: capture marker filter, zero-I/O stopword guard, per-call header memo, single realpath, provenance line, truncation ladder, adapter dedup, new retrieve operation; 213/283/48 tests green."
 
 in-progress:
   - title: "Atomic topics and V2 baseline"
@@ -124,7 +126,7 @@ in-progress:
       - "schemas/envelope.schema.json"
       - "docs/future-evolutions.md"
       - "docs/verification.md"
-    next-step: "Commit the working tree, then deploy 0.2.1 plus the doctor."
+    next-step: "Deploy 0.2.1 plus the doctor to the consuming projects."
     blocker: null
 
 next-steps:
