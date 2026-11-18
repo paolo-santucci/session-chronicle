@@ -1,0 +1,474 @@
+schema-version: 1
+project-root: "/var/home/paolo/distrobox/any-dev/session-chronicle"
+docs-root: "docs"
+bootstrap-date: 2026-11-18
+status: done
+project-brief: |
+  Initial canon for session-chronicle 0.2.1, a four-harness (OpenCode, Claude Code,
+  Codex CLI, Pi) project-memory system. Product-first shape: capability slices are the
+  spine, with two subordinate architecture/data-model slices (runtime-architecture,
+  harness-adapters) recording the internal layout needed to reason about those
+  capabilities. Gated capabilities are first-class: every slice states its own declared
+  limits, and a dedicated capability-gates domain holds the cross-harness matrix of
+  installed/activated/operational states, gate owners and permissible claims.
+  Deliberate non-capabilities appear as declared limits, never silent absences.
+  Scope is today's truth only, including contracts declared but not yet natively wired
+  (continuations stay, marked pending). Excluded: roadmap ambition, competitor
+  comparison, archived plans, refactor reports and verification logs. Deployment is in
+  canon: one slice covers bundle contents, the standalone installer and the
+  Chronicle/UAT ownership boundary.
+phases:
+  brainstorm: done
+  taxonomy: approved
+  extraction: done
+  review: done
+  finalize: done
+domains:
+  - name: capture
+    paths:
+      - "skill/session-chronicle/scripts/_capture.py"
+      - "skill/session-chronicle/scripts/capture-signals.py"
+      - "skill/session-chronicle/scripts/test_capture_injected_filter.py"
+    rationale: "Passive zero-token capture of tool activity into draft buffers, sealed batches and publication"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/capture.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/capture.md"
+    review-decision: approve
+    revision-note: null
+  - name: retrieval
+    paths:
+      - "skill/session-chronicle/scripts/retrieve-inject.py"
+      - "skill/session-chronicle/scripts/_memory_read.py"
+      - "skill/session-chronicle/scripts/_memory_markers.py"
+      - "skill/session-chronicle/scripts/test_retrieval_phases.py"
+      - "skill/session-chronicle/scripts/test_retrieval_render.py"
+      - "tests/test_retrieval_acceptance.py"
+      - "tests/test_retrieval_perf.py"
+      - "README.md"
+    rationale: "Prompt-time injection: BM25 ranking, budget, dedup, factual-evidence exclusion, repeat suppression, provenance rendering"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/retrieval.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/retrieval.md"
+    review-decision: approve
+    revision-note: null
+  - name: session-journal
+    paths:
+      - "skill/session-chronicle/scripts/_session_notes.py"
+      - "skill/session-chronicle/scripts/checkpoint.py"
+      - "skill/session-chronicle/scripts/_checkpoint.py"
+      - "skill/session-chronicle/scripts/session-context.py"
+      - "skill/session-chronicle/scripts/test_session_notes_selection.py"
+      - "skill/session-chronicle/scripts/test_checkpoint.py"
+      - "schemas/continuation.schema.json"
+      - "skill/session-chronicle/references/session-note-template.md"
+      - "docs/legacy-data.md"
+    rationale: "Chronological memory: session presentations, factual checkpoints, optional semantic enrichment, continuations"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/session-journal.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/session-journal.md"
+    review-decision: approve
+    revision-note: null
+  - name: topic-memory
+    paths:
+      - "skill/session-chronicle/scripts/_topic_graph.py"
+      - "skill/session-chronicle/scripts/topic-maintenance.py"
+      - "skill/session-chronicle/scripts/topic-patch-lint.py"
+      - "skill/session-chronicle/scripts/slugify.py"
+      - "skill/session-chronicle/scripts/sync-topics-field.py"
+      - "skill/session-chronicle/scripts/topic-index.sh"
+      - "skill/session-chronicle/references"
+      - "skill/session-chronicle-refactor"
+    rationale: "Atomic topics, structure notes, redirects, slug normalisation and the refactor workflow"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/topic-memory.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/topic-memory.md"
+    review-decision: approve
+    revision-note: null
+  - name: memory-tools
+    paths:
+      - "skill/session-chronicle/scripts/memory-recall.sh"
+      - "skill/session-chronicle/scripts/backlinks.py"
+      - "skill/session-chronicle/scripts/memory-audit.py"
+      - "skill/session-chronicle/scripts/session-context.py"
+      - "skill/session-chronicle/SKILL.md"
+      - "README.md"
+    rationale: "The five explicit memory tools as a programmatic public API"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/memory-tools.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/memory-tools.md"
+    review-decision: approve
+    revision-note: null
+  - name: write-safety
+    paths:
+      - "skill/session-chronicle/scripts/_guards.py"
+      - "skill/session-chronicle/scripts/note-lint.py"
+      - "skill/session-chronicle/scripts/test_write_boundaries.py"
+      - "skill/session-chronicle/scripts/test_memory_contracts.py"
+      - "docs/legacy-data.md"
+    rationale: "Write-path guard, closed history, provenance, secret-like patterns, note schema enforcement, fail-closed behaviour"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/write-safety.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/write-safety.md"
+    review-decision: approve
+    revision-note: null
+  - name: runtime-architecture
+    paths:
+      - "skill/session-chronicle/scripts/_docsroot.py"
+      - "skill/session-chronicle/scripts/_storage_paths.py"
+      - "skill/session-chronicle/scripts/_checkpoint.py"
+      - "skill/session-chronicle/scripts/_portable.py"
+      - "skill/session-chronicle/scripts/chronicle.py"
+      - "skill/session-chronicle/scripts/_identity.py"
+      - "schemas"
+      - "README.md"
+    rationale: "docs-root resolution, on-disk layout, atomic durability protocol and the operation protocol"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/runtime-architecture.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/runtime-architecture.md"
+    review-decision: approve
+    revision-note: "Orchestrator scope correction: the durability protocol is implemented in _checkpoint.py, now added to the read set. Verify lock, hard-link publication, directory fsync and pending removal from code and close Gap 1."
+  - name: harness-adapters
+    paths:
+      - "adapters"
+      - "tests/test_native_hooks.py"
+      - "tests/test_portable_core.py"
+      - "tests/pi.adapter.test.ts"
+      - "tests/test_neutral_workflows.py"
+    rationale: "Per-harness native translation, hook composition, envelope/identity/response schemas"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/harness-adapters.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/harness-adapters.md"
+    review-decision: approve
+    revision-note: null
+  - name: capability-gates
+    paths:
+      - "docs/capability-matrix.md"
+      - "docs/runtime-contracts.md"
+      - "docs/uat-integration-request.md"
+      - "docs/verification.md"
+      - "README.md"
+    rationale: "Cross-harness matrix of installed/activated/operational states, declared unsupported capabilities and qualification ownership"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/capability-gates.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/capability-gates.md"
+    review-decision: approve
+    revision-note: null
+  - name: packaging-deployment
+    paths:
+      - "scripts/build-package.py"
+      - "scripts/install-local.sh"
+      - "plugin.yaml"
+      - "package.json"
+      - "skills"
+      - "command"
+      - "tests/test_portable_package.py"
+      - "tests/test_install_local.py"
+      - "tests/test_uat_package.py"
+      - "docs/package-consumption.md"
+      - "README.md"
+    rationale: "Distribution contract: bundle contents, installer and the Chronicle/UAT ownership boundary"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/packaging-deployment.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/packaging-deployment.md"
+    review-decision: approve
+    revision-note: null
+  - name: diagnostics
+    paths:
+      - "skill/session-chronicle/scripts/chronicle-doctor.py"
+      - "skill/session-chronicle/scripts/test_chronicle_doctor.py"
+      - "scripts/lint-agents.py"
+      - "tests/test_docs_contracts.py"
+      - "tests/test_lint_agents.py"
+      - "scripts/requirements-lint.txt"
+    rationale: "Operator-facing health surface: doctor checks, agent lint and docs-contract validation"
+    state: approved
+    draft-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/_draft/diagnostics.md"
+    promoted-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/canon/spec/diagnostics.md"
+    review-decision: approve
+    revision-note: null
+cross-domain-refs:
+  - from: capability-gates
+    to: capture
+    note: "Selective prompts, file/process signals and primary-only capture are gated rows"
+    resolved: true
+  - from: capability-gates
+    to: session-journal
+    note: "Durability, replayed delivery, concurrent writers, crash recovery"
+    resolved: true
+  - from: capability-gates
+    to: retrieval
+    note: "BM25 prompt retrieval, session-start index, degradation to find"
+    resolved: true
+  - from: capability-gates
+    to: memory-tools
+    note: "The five memory_* tools and their policy/UAT mapping gap"
+    resolved: true
+  - from: capability-gates
+    to: write-safety
+    note: "Secret/history guard and shell/external protection rows"
+    resolved: true
+  - from: capability-gates
+    to: topic-memory
+    note: "Enrichment, bootstrap and topic-refactoring gates"
+    resolved: true
+  - from: capability-gates
+    to: harness-adapters
+    note: "Per-adapter native surface and integration boundary"
+    resolved: true
+  - from: capability-gates
+    to: runtime-architecture
+    note: "Operation protocol with trusted adapter context; durable publication"
+    resolved: true
+  - from: capture
+    to: session-journal
+    note: "Sealing and publication of draft buffers into immutable factual batches"
+    resolved: true
+  - from: capture
+    to: retrieval
+    note: "Injected-memory marker stripping shared with prompt retrieval"
+    resolved: true
+  - from: capture
+    to: write-safety
+    note: "Note-lint identity, batch and secret predicates"
+    resolved: true
+  - from: capture
+    to: runtime-architecture
+    note: "Storage layout, regular-file validation and docs-root resolution"
+    resolved: true
+  - from: capture
+    to: harness-adapters
+    note: "Envelope dispatch and harness identity decide which writer runs"
+    resolved: true
+  - from: diagnostics
+    to: runtime-architecture
+    note: "docs-root resolve and detect_orphan decide the reported verdict"
+    resolved: true
+  - from: diagnostics
+    to: session-journal
+    note: "select_candidates is the eligibility authority for the retrieval window"
+    resolved: true
+  - from: diagnostics
+    to: topic-memory
+    note: "Frontmatter parsing for note classification"
+    resolved: true
+  - from: diagnostics
+    to: memory-tools
+    note: "memory-audit is loaded dynamically for the quality mode"
+    resolved: true
+  - from: diagnostics
+    to: capture
+    note: "Pending batches and live drafts are read from the drafts store"
+    resolved: true
+  - from: diagnostics
+    to: packaging-deployment
+    note: "Module package.json, install marker and plugin entries are install signals"
+    resolved: true
+  - from: harness-adapters
+    to: capture
+    note: "Journal capture event shapes and the operation roster it dispatches"
+    resolved: true
+  - from: harness-adapters
+    to: retrieval
+    note: "Index semantics and degradation codes for fail-closed behaviour"
+    resolved: true
+  - from: harness-adapters
+    to: write-safety
+    note: "Journal guard and protected-history policy surfaced at guard sites"
+    resolved: true
+  - from: harness-adapters
+    to: runtime-architecture
+    note: "Envelope schema and worker protocol"
+    resolved: true
+  - from: harness-adapters
+    to: packaging-deployment
+    note: "Manifest capability names and hooks contributions"
+    resolved: true
+  - from: harness-adapters
+    to: memory-tools
+    note: "Codex model-facing memory tools require an external broker"
+    resolved: true
+  - from: harness-adapters
+    to: diagnostics
+    note: "Operator diagnostics consumed by qualification workflows"
+    resolved: true
+  - from: memory-tools
+    to: retrieval
+    note: "Shared recall/ranking core and proxy invocation"
+    resolved: true
+  - from: memory-tools
+    to: topic-memory
+    note: "Topic graph, review notice and resolution codes"
+    resolved: true
+  - from: memory-tools
+    to: session-journal
+    note: "Factual checkpointing and session-note access"
+    resolved: true
+  - from: memory-tools
+    to: runtime-architecture
+    note: "docs-root resolution"
+    resolved: true
+  - from: memory-tools
+    to: write-safety
+    note: "Note schema and identity predicates"
+    resolved: true
+  - from: memory-tools
+    to: harness-adapters
+    note: "Adapters register the five tools and map their arguments"
+    resolved: true
+  - from: packaging-deployment
+    to: capture
+    note: "Packages the runtime implementing capture"
+    resolved: true
+  - from: packaging-deployment
+    to: retrieval
+    note: "Ships retrieval and memory-maintenance scripts into adapter trees"
+    resolved: true
+  - from: packaging-deployment
+    to: session-journal
+    note: "Packages session-context capability"
+    resolved: true
+  - from: packaging-deployment
+    to: runtime-architecture
+    note: "Ships the docs-root boundary resolver"
+    resolved: true
+  - from: packaging-deployment
+    to: memory-tools
+    note: "Ships memory-audit"
+    resolved: true
+  - from: packaging-deployment
+    to: topic-memory
+    note: "Ships topic-maintenance"
+    resolved: true
+  - from: retrieval
+    to: session-journal
+    note: "Candidate partition, factual-evidence exclusion, provenance validation"
+    resolved: true
+  - from: retrieval
+    to: topic-memory
+    note: "Slug validity and topic graph accessors"
+    resolved: true
+  - from: retrieval
+    to: runtime-architecture
+    note: "docs-root resolution and the retrieve operation envelope"
+    resolved: true
+  - from: retrieval
+    to: capture
+    note: "Shared injected-text markers"
+    resolved: true
+  - from: retrieval
+    to: diagnostics
+    note: "Doctor reads the scan cap to predict retrievability"
+    resolved: true
+  - from: retrieval
+    to: memory-tools
+    note: "Injected preamble and footer point at recall tooling"
+    resolved: true
+  - from: runtime-architecture
+    to: capture
+    note: "Capture admission and replay-conflict detection"
+    resolved: true
+  - from: runtime-architecture
+    to: session-journal
+    note: "Evidence publication and lock acquisition"
+    resolved: true
+  - from: runtime-architecture
+    to: write-safety
+    note: "Protected-target rules owned by the write guard"
+    resolved: true
+  - from: runtime-architecture
+    to: retrieval
+    note: "Ranking and block rendering"
+    resolved: true
+  - from: runtime-architecture
+    to: topic-memory
+    note: "Topic resolution, backlink counts and index rendering"
+    resolved: true
+  - from: runtime-architecture
+    to: harness-adapters
+    note: "Native adapters translate host events into the envelope"
+    resolved: true
+  - from: session-journal
+    to: capture
+    note: "Consumes draft batches produced by capture hooks"
+    resolved: true
+  - from: session-journal
+    to: write-safety
+    note: "Record validation, redaction patterns, identity and summary naming"
+    resolved: true
+  - from: session-journal
+    to: topic-memory
+    note: "Candidate selection drops inactive topics via the topic graph"
+    resolved: true
+  - from: session-journal
+    to: runtime-architecture
+    note: "Writer lock, storage paths, docs-root and layout guards"
+    resolved: true
+  - from: session-journal
+    to: retrieval
+    note: "preferred_paths is the session index eager selector"
+    resolved: true
+  - from: session-journal
+    to: memory-tools
+    note: "Summary template directs writers to the session-context tool"
+    resolved: true
+  - from: topic-memory
+    to: runtime-architecture
+    note: "docs-root resolution and project identity"
+    resolved: true
+  - from: topic-memory
+    to: session-journal
+    note: "Session discovery, factual-evidence suppression and preferred views"
+    resolved: true
+  - from: topic-memory
+    to: write-safety
+    note: "Guarded native patch preflight for typed topics"
+    resolved: true
+  - from: topic-memory
+    to: memory-tools
+    note: "Refactoring reruns the quality audit"
+    resolved: true
+  - from: topic-memory
+    to: retrieval
+    note: "Index rendering delegates to the shared memory-read core"
+    resolved: true
+  - from: write-safety
+    to: session-journal
+    note: "Counterpart writer creates evidence and presentation records"
+    resolved: true
+  - from: write-safety
+    to: runtime-architecture
+    note: "Memory root classification and layout contract"
+    resolved: true
+  - from: write-safety
+    to: topic-memory
+    note: "Structural topic validation and patch lint reconstruct proposals"
+    resolved: true
+  - from: write-safety
+    to: retrieval
+    note: "Duplicate presentations omitted on the read side"
+    resolved: true
+  - from: capability-gates
+    to: "external:UAT toolkit"
+    note: "Policy, composition and qualification owner"
+    resolved: false
+  - from: capability-gates
+    to: "external:status-inject"
+    note: "Sibling plugin in the same roster"
+    resolved: false
+  - from: packaging-deployment
+    to: "external:UAT"
+    note: "Owns resolution, compilation, configuration, deployment and qualification"
+    resolved: false
+  - from: packaging-deployment
+    to: "external:native hosts"
+    note: "OpenCode plugin runtime, Pi extensions, Git toolchain"
+    resolved: false
+  - from: packaging-deployment
+    to: "external:status-inject/agent-statistics"
+    note: "Sibling plugins co-installed in the roster"
+    resolved: false
+  - from: harness-adapters
+    to: "external:Codex broker"
+    note: "External broker needed for model-facing memory tools"
+    resolved: false
+adr-path: "/var/home/paolo/distrobox/any-dev/session-chronicle/docs/decisions/D-001-canon-bootstrap-2026-11-18.md"

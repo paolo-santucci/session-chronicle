@@ -1,5 +1,5 @@
 schema-version: 2
-last-updated: "2026-11-17T20:05:00+01:00"
+last-updated: "2026-11-18T22:45:59+01:00"
 active-plan: null
 last-plan: "docs/plans/archive/sp-20261116-retrieval-integrity-performance-plan.md"
 
@@ -53,6 +53,8 @@ long-plan:
 pending-consolidation: []
 
 recently-completed:
+  - date: 2026-11-18
+    summary: "Canon bootstrap completed: 11 approved spec slices plus INDEX and D-001 ADR, produced by 11 parallel extractor drafts with per-domain human review."
   - date: 2026-11-17
     summary: "Hardened retrieval: capture marker filter, zero-I/O stopword guard, per-call header memo, single realpath, provenance line, truncation ladder, adapter dedup, new retrieve operation; 213/283/48 tests green."
 
@@ -134,6 +136,7 @@ next-steps:
   - "Define trusted native continuation entrypoints and generated maintenance-helper ownership mappings."
   - "Run explicit semantic enrichment on the most active project; no semantic-summary records exist across 224 session records."
   - "Apply /session-chronicle-refactor --dry-run to the eleven legacy topic notes in perfido-os."
+  - "Run canon-verify around 2027-02-16 to refresh last-verified or record drift."
 
 known-issues:
   - severity: critical
